@@ -1,236 +1,156 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+import {
+  AlertTriangle, ArrowLeft, BookOpenCheck, BrainCircuit, CheckCircle2,
+  Clock3, FileText, Loader2, RefreshCw, Sparkles, Target,
+} from 'lucide-react';
 
 export default function Revise({ studentId, onRefreshProfile }) {
   const [topics, setTopics] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedTopic, setSelectedTopic] = useState(null);
-  
-  // Revision session state
   const [revisionData, setRevisionData] = useState(null);
   const [answers, setAnswers] = useState({});
   const [verifyResult, setVerifyResult] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    fetchTopics();
-  }, [studentId]);
+  useEffect(() => { fetchTopics(); }, [studentId]);
 
   const fetchTopics = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/revise/topics/${studentId}`);
-      const data = await res.json();
-      setTopics(data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
+      const response = await fetch(`/api/revise/topics/${studentId}`);
+      setTopics(await response.json());
+    } catch (error) { console.error(error); }
+    finally { setLoading(false); }
   };
 
-  const handleStartRevision = async (topicName) => {
+  const handleStartRevision = async (topicName, subConcept = null) => {
     setSelectedTopic(topicName);
     setLoading(true);
     setVerifyResult(null);
     setAnswers({});
-
     try {
-      const res = await fetch('/api/revise/start', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ student_id: studentId, topic: topicName })
+      const response = await fetch('/api/revise/start', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ student_id: studentId, topic: topicName, sub_concept: subConcept }),
       });
-      const data = await res.json();
-      setRevisionData(data);
-    } catch (err) {
-      alert(`Error starting revision: ${err.message}`);
-    } finally {
-      setLoading(false);
-    }
+      setRevisionData(await response.json());
+    } catch (error) { alert(`Error starting revision: ${error.message}`); }
+    finally { setLoading(false); }
   };
 
   const handleVerify = async () => {
     setSubmitting(true);
     try {
-      const res = await fetch('/api/revise/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch('/api/revise/verify', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          student_id: studentId,
-          topic: selectedTopic,
-          answers: answers,
-          questions: revisionData.questions
-        })
+          student_id: studentId, topic: selectedTopic, answers,
+          questions: revisionData.questions,
+          sub_concept: revisionData.revision_item?.concept,
+          strategy: revisionData.revision_item?.strategy,
+          cycle_number: verifyResult?.cycle_number || 1,
+          document_id: revisionData.revision_item?.document_id,
+        }),
       });
-      const data = await res.json();
-      setVerifyResult(data);
+      setVerifyResult(await response.json());
       onRefreshProfile?.();
       fetchTopics();
-    } catch (err) {
-      alert(`Verification error: ${err.message}`);
-    } finally {
-      setSubmitting(false);
-    }
+    } catch (error) { alert(`Verification error: ${error.message}`); }
+    finally { setSubmitting(false); }
   };
 
+  const returnToTopics = () => {
+    setSelectedTopic(null); setRevisionData(null); setVerifyResult(null); setAnswers({});
+  };
+
+  const highPriorityCount = topics.filter((topic) => topic.revision_items?.[0]?.priority === 'high').length;
+  const misconceptionCount = topics.reduce((total, topic) => total + (topic.misconceptions?.length || 0), 0);
+  const masteredCount = topics.filter((topic) => topic.status === 'MASTERED').length;
+
   return (
-    <div style={{ maxWidth: '1000px', margin: '0 auto', padding: '30px 20px' }}>
-      {/* Header */}
-      <div className="glass-card" style={{ marginBottom: '24px' }}>
-        <h2 style={{ fontSize: '1.4rem', fontWeight: 700, marginBottom: '6px' }}>
-          Revise mode — Memory-driven learning
-        </h2>
-        <p style={{ fontSize: '0.88rem', color: '#94a3b8' }}>
-          Querying persistent SQLite memory for previous topics, misconceptions, and weak concepts to provide targeted revision.
-        </p>
-      </div>
+    <div className="assessment-page revision-page">
+      <header className="mode-hero">
+        <span className="mode-hero__icon mode-hero__icon--violet"><BrainCircuit size={23} /></span>
+        <div className="mode-hero__copy"><span>Memory-driven workspace</span><h2>Revise what matters</h2><p>Your learning signals and assessment history shape every recommendation.</p></div>
+        <div className="mode-hero__meta"><RefreshCw size={14} /> Adaptive memory</div>
+      </header>
 
       {!selectedTopic ? (
-        /* TOPICS DASHBOARD */
-        <div>
-          <h3 style={{ fontSize: '1.1rem', color: '#818cf8', marginBottom: '16px' }}>
-            Available Topics for Revision ({topics.length})
-          </h3>
-
-          {loading ? (
-            <div style={{ color: '#94a3b8' }}>Loading learner memory...</div>
-          ) : topics.length === 0 ? (
-            <div className="glass-card" style={{ textAlign: 'center', padding: '40px' }}>
-              <p style={{ fontSize: '1.1rem', color: '#94a3b8' }}>
-                No studied topics found in memory for <strong>{studentId}</strong> yet.
-              </p>
-              <p style={{ fontSize: '0.9rem', color: '#64748b', marginTop: '8px' }}>
-                Go to <strong>LEARN</strong> or <strong>TEST</strong> mode to start studying a topic!
-              </p>
-            </div>
+        <main className="mode-content revision-dashboard">
+          <div className="section-title-row"><div><span>Your revision queue</span><h3>Recommended focus areas</h3><p>Prioritized from recent learning, tests, and verification history.</p></div><div className="memory-count"><strong>{topics.length}</strong><span>topics in memory</span></div></div>
+          {!loading && topics.length > 0 && <div className="memory-overview">
+            <div><span className="metric-icon metric-icon--violet"><BrainCircuit size={17} /></span><p><strong>{topics.length}</strong><small>Tracked topics</small></p></div>
+            <div><span className="metric-icon metric-icon--amber"><Target size={17} /></span><p><strong>{highPriorityCount}</strong><small>High priority</small></p></div>
+            <div><span className="metric-icon metric-icon--rose"><AlertTriangle size={17} /></span><p><strong>{misconceptionCount}</strong><small>Active signals</small></p></div>
+            <div><span className="metric-icon metric-icon--green"><CheckCircle2 size={17} /></span><p><strong>{masteredCount}</strong><small>Mastered topics</small></p></div>
+          </div>}
+          {loading ? <LoadingState label="Reading learner memory…" /> : topics.length === 0 ? (
+            <div className="surface-panel empty-memory"><span><BookOpenCheck size={28} /></span><h3>Your revision queue is clear</h3><p>Complete a Learn session or Test assessment and personalized recommendations will appear here.</p></div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
-              {topics.map((t, idx) => (
-                <div key={idx} className="glass-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                      <h4 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#f8fafc' }}>
-                        {t.topic}
-                      </h4>
-                      <span className={`badge ${t.status === 'MASTERED' ? 'badge-mastered' : 'badge-revision'}`}>
-                        {t.status}
-                      </span>
-                    </div>
-
-                    {t.document_name && (
-                      <div style={{ fontSize: '0.78rem', color: '#38bdf8', marginBottom: '8px' }}>
-                        Source: {t.document_name}
-                      </div>
-                    )}
-
-                    {t.misconceptions && t.misconceptions.length > 0 && (
-                      <div style={{ background: 'rgba(239, 68, 68, 0.15)', padding: '10px', borderRadius: '8px', marginBottom: '12px', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
-                        <div style={{ fontSize: '0.75rem', color: '#f87171', fontWeight: 700 }}>
-                          ACTIVE MISCONCEPTION:
-                        </div>
-                        <div style={{ fontSize: '0.85rem', color: '#fca5a5', marginTop: '2px' }}>
-                          {t.misconceptions[0].misconception}
-                        </div>
-                      </div>
-                    )}
-
-                    {t.weak_subconcepts && t.weak_subconcepts.length > 0 && (
-                      <div style={{ fontSize: '0.82rem', color: '#f87171', marginBottom: '12px' }}>
-                        Weak Areas: {t.weak_subconcepts.join(', ')}
-                      </div>
-                    )}
-                  </div>
-
-                  <button
-                    className="btn-primary"
-                    onClick={() => handleStartRevision(t.topic)}
-                    style={{ width: '100%', justifyContent: 'center', marginTop: '16px', background: 'linear-gradient(90deg, #6366f1, #818cf8)' }}
-                  >
-                    Revise {t.topic} →
-                  </button>
-                </div>
-              ))}
-            </div>
+            <div className="revision-grid">{topics.map((topic, index) => <TopicCard key={`${topic.topic}-${index}`} topic={topic} onStart={handleStartRevision} />)}</div>
           )}
-        </div>
+        </main>
       ) : (
-        /* TARGETED REVISION & MINI TEST VIEW */
-        <div>
-          <button className="btn-secondary" onClick={() => setSelectedTopic(null)} style={{ marginBottom: '20px' }}>
-            ← Back to Revision Topics
-          </button>
+        <main className="mode-content revision-session">
+          <button className="quiet-back" onClick={returnToTopics}><ArrowLeft size={16} /> Back to revision queue</button>
+          {loading ? <LoadingState label="Building your targeted revision…" /> : revisionData && (
+            <div className="revision-workspace-grid">
+            <aside className="revision-rail">
+              <span className="revision-rail__eyebrow">Your revision path</span>
+              <div className="journey-step is-active"><i>1</i><span><strong>Focused recap</strong><small>Review the evidence-backed gap</small></span></div>
+              <div className={`journey-step ${Object.keys(answers).length ? 'is-active' : ''}`}><i>2</i><span><strong>Active practice</strong><small>Apply the corrected concept</small></span></div>
+              <div className={`journey-step ${verifyResult ? 'is-active' : ''}`}><i>3</i><span><strong>Verify mastery</strong><small>Two correct answers required</small></span></div>
+              {revisionData.revision_item && <div className="rail-focus"><Target size={16} /><span><small>Current focus</small><strong>{revisionData.revision_item.concept}</strong><em>{revisionData.revision_item.priority} priority</em></span></div>}
+            </aside>
+            <section className="surface-panel revision-panel">
+              <div className="panel-heading panel-heading--row"><div><span>Targeted revision</span><h3>{selectedTopic}</h3><p>A focused explanation followed by a two-question mastery check.</p></div><span className="progress-pill"><Sparkles size={14} /> Personalized</span></div>
 
-          {loading ? (
-            <div style={{ color: '#818cf8' }}>Generating targeted revision lesson...</div>
-          ) : revisionData && (
-            <div className="glass-card">
-              <h3 style={{ fontSize: '1.3rem', color: '#818cf8', marginBottom: '14px' }}>
-                Targeted Revision: {selectedTopic}
-              </h3>
+              {revisionData.revision_item && <div className="recommendation-banner"><span><Target size={20} /></span><div><small>{revisionData.revision_item.priority} priority · {revisionData.revision_item.concept}</small><strong>Why this is recommended</strong><p>{revisionData.revision_item.reason_summary}</p></div></div>}
 
-              {/* Revision Lesson Text */}
-              <div style={{
-                background: 'rgba(15, 23, 42, 0.8)',
-                padding: '20px',
-                borderRadius: '12px',
-                borderLeft: '4px solid #818cf8',
-                marginBottom: '24px',
-                lineHeight: 1.6,
-                whiteSpace: 'pre-wrap'
-              }}>
-                {revisionData.revision_lesson}
-              </div>
+              <div className="lesson-surface"><div className="lesson-surface__label"><BookOpenCheck size={16} /> Focused recap</div><div className="lesson-copy">{revisionData.revision_lesson}</div></div>
 
-              {/* 2-Question Revision Mini Test */}
-              <h4 style={{ fontSize: '1.1rem', color: '#f8fafc', marginBottom: '14px' }}>
-                Revision mini-test (2 questions)
-              </h4>
+              <div className="verification-heading"><div><span>Mastery check</span><h3>Show what changed</h3></div><small>{Object.keys(answers).length} / {revisionData.questions.length} answered</small></div>
+              <div className="question-stack question-stack--compact">{revisionData.questions.map((question, index) => (
+                <article className="assessment-question" key={question.id || index}>
+                  <div className="question-number">{String(index + 1).padStart(2, '0')}</div>
+                  <div className="question-body"><span>{question.sub_concept}</span><h4>{question.question}</h4><div className="answer-grid">{question.options.map((option, optionIndex) => (
+                    <label className={`answer-option ${answers[question.id] === option ? 'is-selected' : ''}`} key={optionIndex}><input type="radio" name={question.id} checked={answers[question.id] === option} onChange={() => setAnswers((previous) => ({ ...previous, [question.id]: option }))} /><i>{String.fromCharCode(65 + optionIndex)}</i><span>{option}</span></label>
+                  ))}</div></div>
+                </article>
+              ))}</div>
 
-              {revisionData.questions.map((q, qIdx) => (
-                <div key={q.id || qIdx} style={{ background: 'rgba(30, 41, 59, 0.6)', padding: '16px', borderRadius: '10px', marginBottom: '16px' }}>
-                  <p style={{ fontWeight: 600, marginBottom: '10px' }}>
-                    Q{qIdx + 1} ({q.sub_concept}): {q.question}
-                  </p>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {q.options.map((opt, optIdx) => (
-                      <label key={optIdx} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.9rem' }}>
-                        <input
-                          type="radio"
-                          name={q.id}
-                          value={opt}
-                          checked={answers[q.id] === opt}
-                          onChange={() => setAnswers(prev => ({ ...prev, [q.id]: opt }))}
-                        />
-                        <span>{opt}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              ))}
-
-              {!verifyResult ? (
-                <button className="btn-primary" onClick={handleVerify} disabled={submitting}>
-                  {submitting ? 'Verifying...' : 'Submit Verification Quiz'}
-                </button>
-              ) : (
-                <div style={{ marginTop: '20px' }}>
-                  <div className={`badge ${verifyResult.passed ? 'badge-mastered' : 'badge-revision'}`} style={{ fontSize: '1rem', padding: '8px 16px', marginBottom: '14px' }}>
-                    {verifyResult.passed ? '✓ MASTERED' : '⚠ NEEDS REMEDIATION'}
-                  </div>
-                  <p style={{ fontSize: '1rem', marginBottom: '16px' }}>{verifyResult.message}</p>
-
-                  {verifyResult.remediation && (
-                    <div style={{ background: 'rgba(15, 23, 42, 0.9)', padding: '18px', borderRadius: '12px', borderLeft: '4px solid #f87171' }}>
-                      <h5 style={{ color: '#f87171', marginBottom: '8px' }}>Remediation Strategy:</h5>
-                      <p style={{ color: '#cbd5e1', fontSize: '0.9rem' }}>{verifyResult.remediation.explanation}</p>
-                    </div>
-                  )}
-                </div>
-              )}
+              {!verifyResult ? <div className="panel-actions panel-actions--end"><button className="btn-primary" onClick={handleVerify} disabled={submitting}>{submitting ? <><Loader2 className="spin" size={17} /> Verifying…</> : <><CheckCircle2 size={17} /> Submit mastery check</>}</button></div> : <VerificationResult result={verifyResult} />}
+            </section>
             </div>
           )}
-        </div>
+        </main>
       )}
     </div>
   );
+}
+
+function TopicCard({ topic, onStart }) {
+  const item = topic.revision_items?.[0];
+  const mastered = topic.status === 'MASTERED';
+  return <article className="surface-panel revision-card">
+    <div className="revision-card__top"><span className={`topic-icon ${mastered ? 'is-mastered' : ''}`}><BookOpenCheck size={19} /></span><span className={`badge ${mastered ? 'badge-mastered' : 'badge-revision'}`}>{topic.status}</span></div>
+    <h3>{topic.topic}</h3>
+    {topic.document_name && <div className="source-chip"><FileText size={13} /> {topic.document_name}</div>}
+    {item && <div className="priority-copy"><small>{item.priority} priority · {item.concept}</small><p>{item.reason_summary}</p></div>}
+    {topic.misconceptions?.length > 0 && <div className="memory-signal memory-signal--warning"><AlertTriangle size={15} /><span><strong>Active misconception</strong>{topic.misconceptions[0].misconception}</span></div>}
+    {topic.weak_subconcepts?.length > 0 && <div className="memory-signal"><Target size={15} /><span><strong>Focus areas</strong>{topic.weak_subconcepts.join(', ')}</span></div>}
+    <div className="revision-card__footer"><span><Clock3 size={13} /> Ready when you are</span><button className="btn-primary" onClick={() => onStart(topic.topic, item?.concept)}>Revise now <ArrowLeft className="arrow-forward" size={15} /></button></div>
+  </article>;
+}
+
+function LoadingState({ label }) {
+  return <div className="surface-panel mode-loading"><Loader2 className="spin" size={23} /><span className="skeleton-shimmer-text">{label}</span></div>;
+}
+
+function VerificationResult({ result }) {
+  return <section className={`result-panel ${result.passed ? 'is-success' : 'is-warning'}`}>
+    <div className="result-summary"><span>{result.passed ? <CheckCircle2 size={24} /> : <AlertTriangle size={24} />}</span><div><small>Revision check complete</small><h3>{result.passed ? 'Mastery confirmed' : 'One more pass will help'}</h3><p>{result.message}</p></div></div>
+    {result.remediation && <div className="insight-card"><Sparkles size={18} /><div><strong>Updated remediation strategy</strong><p>{result.remediation.explanation}</p></div></div>}
+  </section>;
 }

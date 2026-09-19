@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Signal Study | Learner response analysis</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="#top" aria-label="Signal Study home">
+        <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
+        <span>signal study</span>
+      </a>
+      <div class="topbar-meta"><span class="status-dot"></span> local analysis workspace <span class="divider"></span> v1.0</div>
+    </header>
+
+    <main id="top">
+      <section class="intro">
+        <div class="eyebrow"><span class="eyebrow-line"></span> learning intelligence / 01</div>
+        <h1>Read the thinking<br><em>behind</em> the answer.</h1>
+        <p class="intro-copy">Paste a learner response and a reference answer. Signal Study maps the evidence, surfaces strengths, and spots misconceptions worth teaching next.</p>
+      </section>
+
+      <section class="workspace-grid" aria-label="Response analysis workspace">
+        <div class="input-column">
+          <div class="section-label"><span>01</span> give us the signal</div>
+          <form id="analysis-form">
+            <label class="field-label" for="learner-response">Learner response <span>required</span></label>
+            <textarea id="learner-response" required placeholder="e.g. Plants get their food from the soil because the roots absorb nutrients..."></textarea>
+            <div class="field-footer"><span id="response-count">0 characters</span><span>Be generous with context</span></div>
+
+            <label class="field-label reference-label" for="reference-answer">Reference answer <span>optional</span></label>
+            <textarea id="reference-answer" class="reference-input" placeholder="Add the expected idea or model answer for a sharper comparison..."></textarea>
+
+            <div class="mode-row">
+              <div>
+                <div class="field-label mode-label">Analysis lens</div>
+                <div class="lens-options" role="group" aria-label="Analysis lens">
+                  <button type="button" class="lens-option active" data-lens="general">General</button>
+                  <button type="button" class="lens-option" data-lens="science">Science</button>
+                  <button type="button" class="lens-option" data-lens="math">Math</button>
+                  <button type="button" class="lens-option" data-lens="writing">Writing</button>
+                </div>
+              </div>
+              <button class="analyze-button" type="submit"><span>Analyze response</span><span class="button-arrow">↗</span></button>
+            </div>
+          </form>
+          <button class="sample-button" id="sample-button" type="button"><span class="spark">✦</span> Try a sample response</button>
+        </div>
+
+        <div class="results-column" id="results-column">
+          <div class="section-label"><span>02</span> make meaning</div>
+          <div class="results-panel" id="results-panel">
+            <div class="empty-state" id="empty-state">
+              <div class="empty-orbit"><span></span><span></span><span></span></div>
+              <h2>Your analysis will land here.</h2>
+              <p>One response in. A clearer picture of what the learner understands, where their model bends, and what to try next.</p>
+              <div class="signal-legend"><span><i class="legend-dot strength"></i> strengths</span><span><i class="legend-dot gap"></i> learning gaps</span><span><i class="legend-dot misconception"></i> misconceptions</span></div>
+            </div>
+            <div class="analysis-output hidden" id="analysis-output"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer><span>Designed for formative feedback</span><span class="footer-rule"></span><span>Think with the learner, not for them.</span></footer>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

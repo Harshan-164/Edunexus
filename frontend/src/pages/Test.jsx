@@ -1,38 +1,53 @@
 import React, { useState } from 'react';
+import {
+  ArrowLeft, Braces, CheckCircle2, ClipboardCheck, FileText,
+  Loader2, Sparkles, Target, UploadCloud,
+} from 'lucide-react';
+
+const MODES = [
+  { id: 'topic', icon: Target, label: 'Topic', description: 'Build a diagnostic around a subject' },
+  { id: 'document', icon: FileText, label: 'Document', description: 'Test from your uploaded material' },
+  { id: 'custom', icon: Braces, label: 'Custom', description: 'Bring your own question set' },
+];
+
+async function readApiResponse(response) {
+  const body = await response.text();
+  let data = null;
+  try { data = body ? JSON.parse(body) : null; }
+  catch { data = null; }
+  if (!response.ok) {
+    const detail = data?.detail || data?.message || body || `Request failed with status ${response.status}`;
+    throw new Error(detail);
+  }
+  if (!data) throw new Error('The server returned an empty or invalid response.');
+  return data;
+}
 
 export default function Test({ studentId, onRefreshProfile }) {
-  const [testMode, setTestMode] = useState('topic'); // 'topic', 'document', 'custom'
+  const [testMode, setTestMode] = useState('topic');
   const [topic, setTopic] = useState('Python Lists');
   const [activeDoc, setActiveDoc] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [customText, setCustomText] = useState('');
-  
-  // Quiz execution state
   const [loading, setLoading] = useState(false);
   const [quizData, setQuizData] = useState(null);
   const [answers, setAnswers] = useState({});
   const [submitResult, setSubmitResult] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
+  const handleFileUpload = async (event) => {
+    const file = event.target.files[0];
     if (!file) return;
-
     setUploading(true);
     const formData = new FormData();
     formData.append('file', file);
-
     try {
-      const res = await fetch('/api/documents/upload', { method: 'POST', body: formData });
-      const data = await res.json();
-      if (res.ok) {
-        setActiveDoc(data.document_name);
-        setTopic(file.name.replace(/\.[^/.]+$/, ""));
-      } else {
-        alert(`Upload error: ${data.detail || 'Failed'}`);
-      }
-    } catch (err) {
-      alert(`Upload error: ${err.message}`);
+      const response = await fetch('/api/documents/upload', { method: 'POST', body: formData });
+      const data = await readApiResponse(response);
+      setActiveDoc(data.document_name);
+      setTopic(file.name.replace(/\.[^/.]+$/, ''));
+    } catch (error) {
+      alert(`Upload error: ${error.message}`);
     } finally {
       setUploading(false);
     }
@@ -43,281 +58,146 @@ export default function Test({ studentId, onRefreshProfile }) {
     setSubmitResult(null);
     setAnswers({});
     setQuizData(null);
-
     let customQuestions = null;
     if (testMode === 'custom' && customText.trim()) {
-      try {
-        customQuestions = JSON.parse(customText);
-      } catch (err) {
+      try { customQuestions = JSON.parse(customText); }
+      catch {
         alert('Invalid JSON format for custom questions. Please format as JSON array of objects.');
         setLoading(false);
         return;
       }
     }
-
     try {
-      const res = await fetch('/api/test/start', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch('/api/test/start', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          student_id: studentId,
-          topic: topic,
+          student_id: studentId, topic,
           document_name: testMode === 'document' ? activeDoc : null,
-          custom_questions: customQuestions
-        })
+          custom_questions: customQuestions,
+        }),
       });
-      const data = await res.json();
-      setQuizData(data);
-    } catch (err) {
-      alert(`Test generation error: ${err.message}`);
-    } finally {
-      setLoading(false);
-    }
+      setQuizData(await readApiResponse(response));
+    } catch (error) {
+      alert(`Test generation error: ${error.message}`);
+    } finally { setLoading(false); }
   };
 
   const handleSubmitTest = async () => {
     setSubmitting(true);
     try {
-      const res = await fetch('/api/test/submit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch('/api/test/submit', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          student_id: studentId,
-          topic: quizData.topic,
-          attempt_id: quizData.attempt_id,
-          answers: answers,
-          questions: quizData.questions
-        })
+          student_id: studentId, topic: quizData.topic, attempt_id: quizData.attempt_id,
+          answers, questions: quizData.questions,
+          document_name: testMode === 'document' ? activeDoc : null,
+        }),
       });
-      const data = await res.json();
-      setSubmitResult(data);
+      setSubmitResult(await readApiResponse(response));
       onRefreshProfile?.();
-    } catch (err) {
-      alert(`Submission error: ${err.message}`);
-    } finally {
-      setSubmitting(false);
-    }
+    } catch (error) {
+      alert(`Submission error: ${error.message}`);
+    } finally { setSubmitting(false); }
   };
 
+  const answeredCount = Object.keys(answers).length;
+  const completion = quizData ? Math.round((answeredCount / quizData.questions.length) * 100) : 0;
+
   return (
-    <div style={{ maxWidth: '1000px', margin: '0 auto', padding: '30px 20px' }}>
-      {/* Header */}
-      <div className="glass-card" style={{ marginBottom: '24px' }}>
-        <h2 style={{ fontSize: '1.4rem', fontWeight: 700, marginBottom: '6px' }}>
-          Test mode — Adaptive mastery loop
-        </h2>
-        <p style={{ fontSize: '0.88rem', color: '#94a3b8' }}>
-          5-question diagnostic assessment with deterministic scoring, analysis agent misconception detection, and remediation loop.
-        </p>
-      </div>
+    <div className="assessment-page">
+      <header className="mode-hero">
+        <span className="mode-hero__icon"><ClipboardCheck size={23} /></span>
+        <div className="mode-hero__copy">
+          <span>Assessment workspace</span>
+          <h2>Test your understanding</h2>
+          <p>A focused diagnostic with deterministic scoring and evidence-backed feedback.</p>
+        </div>
+        <div className="mode-hero__meta"><Sparkles size={14} /> 5-agent mastery loop</div>
+      </header>
 
       {!quizData ? (
-        /* TEST SETUP SELECTION */
-        <div className="glass-card">
-          <h3 style={{ fontSize: '1.1rem', color: '#c084fc', marginBottom: '16px' }}>
-            Choose Test Creation Option
-          </h3>
-
-          {/* Mode Selector Tabs */}
-          <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-            <button
-              className={`btn-secondary ${testMode === 'topic' ? 'gradient-text' : ''}`}
-              onClick={() => setTestMode('topic')}
-              style={{ borderColor: testMode === 'topic' ? '#c084fc' : 'rgba(255, 255, 255, 0.1)' }}
-            >
-              Option A: Enter Topic
-            </button>
-
-            <button
-              className={`btn-secondary ${testMode === 'document' ? 'gradient-text' : ''}`}
-              onClick={() => setTestMode('document')}
-              style={{ borderColor: testMode === 'document' ? '#c084fc' : 'rgba(255, 255, 255, 0.1)' }}
-            >
-              Option B: Upload Document
-            </button>
-
-            <button
-              className={`btn-secondary ${testMode === 'custom' ? 'gradient-text' : ''}`}
-              onClick={() => setTestMode('custom')}
-              style={{ borderColor: testMode === 'custom' ? '#c084fc' : 'rgba(255, 255, 255, 0.1)' }}
-            >
-              Option C: Custom Questions
-            </button>
-          </div>
-
-          {/* Option A View */}
-          {testMode === 'topic' && (
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', fontSize: '0.88rem', color: '#94a3b8', marginBottom: '8px' }}>
-                Topic Name:
-              </label>
-              <input
-                type="text"
-                value={topic}
-                onChange={(e) => setTopic(e.target.value)}
-                style={{
-                  width: '100%',
-                  background: 'rgba(15, 23, 42, 0.8)',
-                  border: '1px solid rgba(255, 255, 255, 0.15)',
-                  borderRadius: '10px',
-                  padding: '12px 16px',
-                  color: '#ffffff',
-                  outline: 'none'
-                }}
-              />
+        <main className="mode-content setup-layout">
+          <section className="surface-panel setup-panel">
+            <div className="panel-heading">
+              <div><span>Step 1</span><h3>Choose how to build your test</h3><p>Your choice changes the source, not the assessment workflow.</p></div>
             </div>
-          )}
+            <div className="mode-choice-grid">
+              {MODES.map(({ id, icon: Icon, label, description }) => (
+                <button key={id} className={`mode-choice ${testMode === id ? 'is-active' : ''}`} onClick={() => setTestMode(id)}>
+                  <span><Icon size={19} /></span><strong>{label}</strong><small>{description}</small>
+                </button>
+              ))}
+            </div>
 
-          {/* Option B View */}
-          {testMode === 'document' && (
-            <div style={{ marginBottom: '20px' }}>
-              <label className="btn-secondary" style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-                <span>{uploading ? 'Uploading...' : 'Select document (PDF/TXT)'}</span>
-                <input type="file" accept=".pdf,.txt" onChange={handleFileUpload} style={{ display: 'none' }} />
-              </label>
-              {activeDoc && (
-                <div style={{ marginTop: '10px', color: '#34d399', fontSize: '0.9rem' }}>
-                  ✓ Active Document: {activeDoc} (Topic: {topic})
+            <div className="setup-editor">
+              {testMode === 'topic' && <label className="field-group"><span>Topic name</span><input value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="e.g. Python Lists" /></label>}
+              {testMode === 'document' && (
+                <div className="upload-zone">
+                  <UploadCloud size={25} /><div><strong>{activeDoc || 'Upload course material'}</strong><p>{activeDoc ? `Ready to create a test for ${topic}` : 'PDF or TXT · content stays scoped to this document'}</p></div>
+                  <label className="btn-secondary">{uploading ? <><Loader2 className="spin" size={16} /> Uploading…</> : 'Choose file'}<input type="file" accept=".pdf,.txt" onChange={handleFileUpload} hidden /></label>
                 </div>
               )}
+              {testMode === 'custom' && <label className="field-group"><span>Question set (JSON)</span><textarea rows="8" value={customText} onChange={(e) => setCustomText(e.target.value)} placeholder={'[\n  {\n    "question": "What is Python slicing?",\n    "options": ["..."],\n    "correct_answer": "Option 1: ..."\n  }\n]'} /></label>}
             </div>
-          )}
-
-          {/* Option C View */}
-          {testMode === 'custom' && (
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', fontSize: '0.88rem', color: '#94a3b8', marginBottom: '8px' }}>
-                Paste Custom Questions JSON Array:
-              </label>
-              <textarea
-                rows={6}
-                value={customText}
-                onChange={(e) => setCustomText(e.target.value)}
-                placeholder={`[\n  {\n    "question": "What is Python slicing?",\n    "options": ["A way to split sequences", "A database query"],\n    "correct_answer": "Option 1: A way to split sequences"\n  }\n]`}
-                style={{
-                  width: '100%',
-                  background: 'rgba(15, 23, 42, 0.8)',
-                  border: '1px solid rgba(255, 255, 255, 0.15)',
-                  borderRadius: '10px',
-                  padding: '12px',
-                  color: '#ffffff',
-                  fontFamily: 'var(--font-code)',
-                  fontSize: '0.85rem'
-                }}
-              />
-            </div>
-          )}
-
-          <button
-            className="btn-primary"
-            onClick={handleStartTest}
-            disabled={loading}
-            style={{ background: 'linear-gradient(135deg, #a855f7, #c084fc)' }}
-          >
-            {loading ? 'Generating 5 diagnostic questions...' : 'Generate 5-question test'}
-          </button>
-        </div>
-      ) : (
-        /* QUIZ EXECUTION & RESULTS */
-        <div>
-          <button className="btn-secondary" onClick={() => setQuizData(null)} style={{ marginBottom: '20px' }}>
-            ← Back to Test Options
-          </button>
-
-          <div className="glass-card">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
-              <h3 style={{ fontSize: '1.25rem', color: '#c084fc' }}>
-                5-Question Diagnostic: {quizData.topic}
-              </h3>
-              <span className="badge badge-learning">
-                {quizData.questions.length} Questions
-              </span>
-            </div>
-
-            {/* Questions List */}
-            {quizData.questions.map((q, qIdx) => (
-              <div key={q.id || qIdx} style={{ background: 'rgba(30, 41, 59, 0.6)', padding: '18px', borderRadius: '12px', marginBottom: '16px' }}>
-                <p style={{ fontWeight: 600, marginBottom: '12px', fontSize: '0.98rem' }}>
-                  Q{qIdx + 1} ({q.sub_concept}): {q.question}
-                </p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {q.options.map((opt, optIdx) => (
-                    <label key={optIdx} style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', fontSize: '0.92rem' }}>
-                      <input
-                        type="radio"
-                        name={q.id}
-                        value={opt}
-                        checked={answers[q.id] === opt}
-                        onChange={() => setAnswers(prev => ({ ...prev, [q.id]: opt }))}
-                      />
-                      <span>{opt}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            ))}
-
-            {!submitResult ? (
-              <button className="btn-primary" onClick={handleSubmitTest} disabled={submitting} style={{ background: 'linear-gradient(135deg, #a855f7, #c084fc)' }}>
-                {submitting ? 'Evaluating with 5-Agent Engine...' : 'Submit Answers'}
+            <div className="panel-actions">
+              <span><CheckCircle2 size={15} /> Five questions · immediate analysis</span>
+              <button className="btn-primary" onClick={handleStartTest} disabled={loading || (testMode === 'document' && !activeDoc)}>
+                {loading ? <><Loader2 className="spin" size={17} /> Generating diagnostic…</> : <><Sparkles size={17} /> Generate test</>}
               </button>
-            ) : (
-              /* SUBMISSION RESULTS & THINKING TRACE */
-              <div style={{ marginTop: '24px' }}>
-                <div className={`badge ${submitResult.status === 'MASTERED' ? 'badge-mastered' : 'badge-revision'}`} style={{ fontSize: '1.1rem', padding: '10px 20px', marginBottom: '16px' }}>
-                  {submitResult.status === 'MASTERED' ? '✓ MASTERED' : '⚠ WEAKNESS DETECTED'}
-                </div>
-
-                <p style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '16px' }}>
-                  Score: {int(submitResult.score * 100)}% ({int(submitResult.score * quizData.questions.length)}/{quizData.questions.length} Correct)
-                </p>
-
-                {/* LLM Thinking Process */}
-                {submitResult.thinking_process && (
-                  <div className="thinking-box">
-                    <div style={{ color: '#38bdf8', fontWeight: 600, marginBottom: '10px' }}>
-                      Reasoning and diagnosis trace:
-                    </div>
-                    {submitResult.thinking_process.map((step, idx) => (
-                      <div key={idx} className="thinking-step">
-                        {step}
-                      </div>
-                    ))}
+            </div>
+          </section>
+        </main>
+      ) : (
+        <main className="mode-content quiz-layout">
+          <button className="quiet-back" onClick={() => setQuizData(null)}><ArrowLeft size={16} /> Back to test setup</button>
+          <div className="quiz-workspace-grid">
+          <aside className="assessment-rail">
+            <div className="progress-orbit" style={{ '--progress': `${completion * 3.6}deg` }}><span><strong>{completion}%</strong><small>complete</small></span></div>
+            <div className="rail-copy"><span>Assessment progress</span><strong>{answeredCount} of {quizData.questions.length} answered</strong><p>You can review any response before submitting.</p></div>
+            <div className="question-map" aria-label="Question completion">
+              {quizData.questions.map((question, index) => <span key={question.id || index} className={answers[question.id] ? 'is-complete' : ''}>{index + 1}</span>)}
+            </div>
+            <div className="rail-note"><Sparkles size={15} /><p><strong>Evidence-aware</strong>Your responses update learner memory after deterministic scoring.</p></div>
+          </aside>
+          <section className="surface-panel quiz-panel">
+            <div className="panel-heading panel-heading--row">
+              <div><span>Diagnostic assessment</span><h3>{quizData.topic}</h3><p>Choose one answer for each question.</p></div>
+              <div className="progress-pill"><strong>{answeredCount}</strong> / {quizData.questions.length} answered</div>
+            </div>
+            <div className="question-stack">
+              {quizData.questions.map((question, index) => (
+                <article className="assessment-question" key={question.id || index}>
+                  <div className="question-number">{String(index + 1).padStart(2, '0')}</div>
+                  <div className="question-body"><span>{question.sub_concept}</span><h4>{question.question}</h4>
+                    <div className="answer-grid">{question.options.map((option, optionIndex) => (
+                      <label className={`answer-option ${answers[question.id] === option ? 'is-selected' : ''}`} key={optionIndex}>
+                        <input type="radio" name={question.id} checked={answers[question.id] === option} onChange={() => setAnswers((previous) => ({ ...previous, [question.id]: option }))} />
+                        <i>{String.fromCharCode(65 + optionIndex)}</i><span>{option}</span>
+                      </label>
+                    ))}</div>
                   </div>
-                )}
+                </article>
+              ))}
+            </div>
 
-                {/* Misconceptions */}
-                {submitResult.misconceptions && submitResult.misconceptions.length > 0 && (
-                  <div style={{ background: 'rgba(239, 68, 68, 0.15)', padding: '18px', borderRadius: '12px', borderLeft: '4px solid #ef4444', marginBottom: '20px' }}>
-                    <h4 style={{ color: '#f87171', marginBottom: '8px' }}>
-                      Detected Misconception:
-                    </h4>
-                    <p style={{ color: '#fca5a5', fontSize: '0.95rem' }}>
-                      {submitResult.misconceptions[0].misconception}
-                    </p>
-                  </div>
-                )}
-
-                {/* Remediation */}
-                {submitResult.remediation && (
-                  <div style={{ background: 'rgba(15, 23, 42, 0.9)', padding: '20px', borderRadius: '12px', borderLeft: '4px solid #818cf8' }}>
-                    <h4 style={{ color: '#818cf8', marginBottom: '10px' }}>
-                      Agent remediation:
-                    </h4>
-                    <p style={{ color: '#cbd5e1', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
-                      {submitResult.remediation.explanation}
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
+            {!submitResult ? <div className="panel-actions panel-actions--end"><button className="btn-primary" onClick={handleSubmitTest} disabled={submitting}>
+              {submitting ? <><Loader2 className="spin" size={17} /> Evaluating…</> : <><ClipboardCheck size={17} /> Submit assessment</>}
+            </button></div> : <ResultPanel result={submitResult} questionCount={quizData.questions.length} />}
+          </section>
           </div>
-        </div>
+        </main>
       )}
     </div>
   );
 }
 
-function int(val) {
-  return Math.round(val);
+function ResultPanel({ result, questionCount }) {
+  const mastered = result.status === 'MASTERED';
+  const percent = Math.round(result.score * 100);
+  return <section className={`result-panel ${mastered ? 'is-success' : 'is-warning'}`}>
+    <div className="result-summary"><span>{mastered ? <CheckCircle2 size={24} /> : <Target size={24} />}</span><div><small>Assessment complete</small><h3>{mastered ? 'Concept mastered' : 'A learning gap was found'}</h3><p>{percent}% · {Math.round(result.score * questionCount)} of {questionCount} correct</p></div></div>
+    {result.thinking_process?.length > 0 && <div className="evidence-list"><strong>How this result was reached</strong>{result.thinking_process.map((step, index) => <p key={index}><span>{index + 1}</span>{step}</p>)}</div>}
+    {result.misconceptions?.length > 0 && <div className="insight-card insight-card--danger"><Target size={18} /><div><strong>Concept to revisit</strong><p>{result.misconceptions[0].misconception}</p></div></div>}
+    {result.remediation && <div className="insight-card"><Sparkles size={18} /><div><strong>Personalized next step</strong><p>{result.remediation.explanation}</p></div></div>}
+  </section>;
 }

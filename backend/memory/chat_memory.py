@@ -52,6 +52,8 @@ class ChatMemory:
                     sender TEXT NOT NULL,
                     text TEXT NOT NULL,
                     visualization TEXT,
+                    content_type TEXT NOT NULL DEFAULT 'text',
+                    content_data TEXT,
                     is_grounded INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL,
                     FOREIGN KEY(session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
@@ -76,6 +78,13 @@ class ChatMemory:
                 ON chat_attachments(session_id, created_at ASC);
                 """
             )
+            message_columns = {
+                row["name"] for row in connection.execute("PRAGMA table_info(chat_messages)").fetchall()
+            }
+            if "content_type" not in message_columns:
+                connection.execute("ALTER TABLE chat_messages ADD COLUMN content_type TEXT NOT NULL DEFAULT 'text'")
+            if "content_data" not in message_columns:
+                connection.execute("ALTER TABLE chat_messages ADD COLUMN content_data TEXT")
 
     @staticmethod
     def _now() -> str:
@@ -100,12 +109,20 @@ class ChatMemory:
                 visualization = json.loads(row["visualization"])
             except json.JSONDecodeError:
                 visualization = None
+        content_data = None
+        if row["content_data"]:
+            try:
+                content_data = json.loads(row["content_data"])
+            except json.JSONDecodeError:
+                content_data = None
         return {
             "id": row["id"],
             "session_id": row["session_id"],
             "sender": row["sender"],
             "text": row["text"],
             "visualization": visualization,
+            "content_type": row["content_type"] or "text",
+            "content_data": content_data,
             "is_grounded": bool(row["is_grounded"]),
             "created_at": row["created_at"],
         }
@@ -184,14 +201,17 @@ class ChatMemory:
         text: str,
         visualization: Optional[Dict[str, Any]] = None,
         is_grounded: bool = False,
+        content_type: str = "text",
+        content_data: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         message_id = str(uuid.uuid4())
         now = self._now()
         serialized_visualization = json.dumps(visualization) if visualization else None
+        serialized_content = json.dumps(content_data) if content_data else None
         with self._connect() as connection:
             connection.execute(
-                "INSERT INTO chat_messages (id, session_id, sender, text, visualization, is_grounded, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (message_id, session_id, sender, text, serialized_visualization, int(is_grounded), now),
+                "INSERT INTO chat_messages (id, session_id, sender, text, visualization, content_type, content_data, is_grounded, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (message_id, session_id, sender, text, serialized_visualization, content_type, serialized_content, int(is_grounded), now),
             )
             connection.execute("UPDATE chat_sessions SET updated_at = ? WHERE id = ?", (now, session_id))
             row = connection.execute("SELECT * FROM chat_messages WHERE id = ?", (message_id,)).fetchone()
@@ -233,3 +253,33 @@ class ChatMemory:
         result = self._attachment_dict(row)
         result["file_path"] = row["file_path"]
         return result
+
+    def delete_session(self, session_id: str) -> bool:
+        """Deletes a chat session and its associated messages and attachments."""
+        with self._connect() as connection:
+            attachment_rows = connection.execute(
+                "SELECT file_path FROM chat_attachments WHERE session_id = ?", (session_id,)
+            ).fetchall()
+            for att in attachment_rows:
+                fpath = att["file_path"]
+                if fpath and os.path.exists(fpath):
+                    try:
+                        os.remove(fpath)
+                    except OSError:
+                        pass
+            media_rows = connection.execute(
+                "SELECT content_data FROM chat_messages WHERE session_id = ? AND content_type = 'video'",
+                (session_id,),
+            ).fetchall()
+            generated_dir = os.path.join(os.path.dirname(self.db_path), "generated")
+            for media_row in media_rows:
+                try:
+                    media_data = json.loads(media_row["content_data"] or "{}")
+                    media_name = os.path.basename(media_data.get("media_url", ""))
+                    media_path = os.path.join(generated_dir, media_name)
+                    if media_name and os.path.isfile(media_path):
+                        os.remove(media_path)
+                except (json.JSONDecodeError, OSError):
+                    pass
+            cursor = connection.execute("DELETE FROM chat_sessions WHERE id = ?", (session_id,))
+            return cursor.rowcount > 0

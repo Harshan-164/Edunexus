@@ -158,5 +158,55 @@
     "text": "piler design, parsing techniques,\nruntime systems, and language implementation.\n",
     "page": 3,
     "document": "eaa04dee-d46a-40e4-bb30-59d83f0e5a05_2e44aa95_Basics_of_Compiler_3_Pages.pdf"
+  },
+  {
+    "text": "Basics of Compiler\n1. Introduction to Compilers\nA compiler is a system software program that translates a program written in a high-level programming language\nsuch as C, C++, or Java into a lower-level form that a computer can execute. The source program is analyzed,\ntransformed, optimized, and finally converted into target code.\nCompiler vs. Interpreter\nCompiler\nInterpreter\nTranslates the program before execution.\nTranslates and executes statements during execution.\nUsually produces object/executable code.\nUsually does not produce a separate executable.\nExecution is generally faster after compilation.\nExecution is generally slower due to translation during execution.\nExamples: C, C++ (typical implementations).\nExamples: Python, JavaScript (commonly interpreted/JIT-based environments).\n2. ",
+    "page": 1,
+    "document": "a75a39ac-b716-4238-a33e-36fe8ef38af9_9d9cad3f_Basics_of_Compiler_3_Pages.pdf"
+  },
+  {
+    "text": "al implementations).\nExamples: Python, JavaScript (commonly interpreted/JIT-based environments).\n2. Basic Structure of a Compiler\nA compiler can be viewed as a pipeline of analysis and synthesis stages. The front end understands the source\nprogram and creates an internal representation, while the back end uses that representation to generate efficient target\ncode.\nSource Program\n↓\nLexical Analysis\nTokens\nSyntax Analysis\nParse Tree / AST\nSemantic Analysis\nChecked Representation\nIntermediate Code Generation\nIntermediate Representation\nCode Optimization\nOptimized IR\nCode Generation\nTarget Code\n3. Front End and Back End\nFront end: Lexical, syntax, and semantic analysis; it is mainly concerned with understanding the source language and\ndetecting errors.\nBack end: Optimization and target-code ge",
+    "page": 1,
+    "document": "a75a39ac-b716-4238-a33e-36fe8ef38af9_9d9cad3f_Basics_of_Compiler_3_Pages.pdf"
+  },
+  {
+    "text": "th understanding the source language and\ndetecting errors.\nBack end: Optimization and target-code generation; it is mainly concerned with producing efficient code for a particular\ntarget machine or architecture.\n",
+    "page": 1,
+    "document": "a75a39ac-b716-4238-a33e-36fe8ef38af9_9d9cad3f_Basics_of_Compiler_3_Pages.pdf"
+  },
+  {
+    "text": "Major Phases of Compilation\n1. Lexical Analysis\nLexical analysis is the first major phase. The lexical analyzer (lexer) reads the source program character by character\nand groups characters into meaningful units called tokens. Whitespace and comments are generally removed at this\nstage.\nExample: For sum = a + 10;, tokens include identifier sum, assignment operator =, identifier a, plus operator +,\ninteger literal 10, and semicolon.\n2. Syntax Analysis\nSyntax analysis, or parsing, checks whether the sequence of tokens follows the grammar of the programming\nlanguage. The parser builds a parse tree or a simplified Abstract Syntax Tree (AST).\nExample: Expression a + b * c\nExpression\n   +\n  / \\\n a   *\n    / \\\n   b   c\n3. Semantic Analysis\nSemantic analysis checks the meaning of the program beyon",
+    "page": 2,
+    "document": "a75a39ac-b716-4238-a33e-36fe8ef38af9_9d9cad3f_Basics_of_Compiler_3_Pages.pdf"
+  },
+  {
+    "text": "   *\n    / \\\n   b   c\n3. Semantic Analysis\nSemantic analysis checks the meaning of the program beyond its grammatical structure. Typical checks include type\ncompatibility, declaration checking, scope rules, and function argument matching. A symbol table stores information\nabout identifiers such as names, types, scopes, and locations.\n4. Intermediate Code Generation\nThe compiler converts the checked source representation into an intermediate representation (IR). IR provides a\nmachine-independent form that makes optimization and retargeting easier.\nThree-Address Code Example\nSource\nThree-Address Code\nx = a + b * c\nt1 = b * c<br/>t2 = a + t1<br/>x = t2\n5. Code Optimization\nOptimization improves the generated program without changing its intended behavior. Examples include constant\nfolding, de",
+    "page": 2,
+    "document": "a75a39ac-b716-4238-a33e-36fe8ef38af9_9d9cad3f_Basics_of_Compiler_3_Pages.pdf"
+  },
+  {
+    "text": " the generated program without changing its intended behavior. Examples include constant\nfolding, dead-code elimination, common subexpression elimination, and strength reduction. Optimization may\nreduce execution time, memory usage, or code size.\n",
+    "page": 2,
+    "document": "a75a39ac-b716-4238-a33e-36fe8ef38af9_9d9cad3f_Basics_of_Compiler_3_Pages.pdf"
+  },
+  {
+    "text": "Code Generation, Errors & Key Concepts\n1. Code Generation\nThe code generator converts the optimized intermediate representation into target code, such as assembly language or\nmachine code. It must consider the target processor's instruction set, registers, addressing modes, and calling\nconventions.\n2. Error Handling\nCompilers detect and report different categories of errors. Good diagnostics identify the location and nature of a problem\nso that the programmer can correct it.\nError Type\nDescription\nExample\nLexical\nInvalid character or token.\nInvalid symbol in an identifier\nSyntax\nViolates language grammar.\nMissing closing parenthesis\nSemantic\nProgram structure is meaningful syntactically but invalid semantically.\nAdding incompatible types\nRuntime\nOccurs while the program executes; not neces",
+    "page": 3,
+    "document": "a75a39ac-b716-4238-a33e-36fe8ef38af9_9d9cad3f_Basics_of_Compiler_3_Pages.pdf"
+  },
+  {
+    "text": "invalid semantically.\nAdding incompatible types\nRuntime\nOccurs while the program executes; not necessarily detected by the compiler.\nDivision by zero\n3. Symbol Table\nA symbol table is a central data structure used by many compiler phases. It records information about program entities\nsuch as variables, functions, classes, constants, and their data types or scopes. Efficient symbol-table operations are\nimportant because identifiers are frequently looked up during compilation.\n4. Important Compiler Terms\nTerm\nMeaning\nToken\nA basic lexical unit produced by the lexer.\nParser\nComponent that checks grammatical structure.\nAST\nTree representation of the essential program structure.\nIR\nIntermediate representation used between source analysis and target-code generation.\nOptimization\nTransformation i",
+    "page": 3,
+    "document": "a75a39ac-b716-4238-a33e-36fe8ef38af9_9d9cad3f_Basics_of_Compiler_3_Pages.pdf"
+  },
+  {
+    "text": "epresentation used between source analysis and target-code generation.\nOptimization\nTransformation intended to improve code efficiency while preserving behavior.\nTarget Code\nFinal code generated for the target machine or runtime.\n5. Complete Compilation Flow\nSource Code → Lexical Analysis → Syntax Analysis → Semantic Analysis → Intermediate Code → Optimization\n→ Code Generation → Target Code\nSummary\nA compiler translates high-level source code into a form suitable for execution. The core concepts to remember are\ntokens, parsing, semantic checking, symbol tables, intermediate representation, optimization, and code\ngeneration. Understanding these phases provides the foundation for studying compiler design, parsing techniques,\nruntime systems, and language implementation.\n",
+    "page": 3,
+    "document": "a75a39ac-b716-4238-a33e-36fe8ef38af9_9d9cad3f_Basics_of_Compiler_3_Pages.pdf"
+  },
+  {
+    "text": "piler design, parsing techniques,\nruntime systems, and language implementation.\n",
+    "page": 3,
+    "document": "a75a39ac-b716-4238-a33e-36fe8ef38af9_9d9cad3f_Basics_of_Compiler_3_Pages.pdf"
   }
 ]

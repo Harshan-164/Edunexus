@@ -1,7 +1,7 @@
 import React from 'react';
 
 export default function Visualizer({ data }) {
-  if (!data) return null;
+  if (!data || data.type === 'stack_operations') return null;
 
   const { type, title, explanation } = data;
 

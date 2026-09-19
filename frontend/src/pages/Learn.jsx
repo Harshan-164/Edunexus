@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  ArrowLeft, BookOpen, CheckCircle2, Clock3, FileText, Loader2,
-  MessageSquare, Paperclip, Plus, Search, Send, Sparkles, X,
+  ArrowLeft, BookOpen, CheckCircle2, ChevronLeft, ChevronRight, Clock3, FileText, Layers, Loader2,
+  MessageSquare, Paperclip, Play, Plus, Search, Send, Sparkles, Trash2, Type, X,
 } from 'lucide-react';
 import Visualizer from '../components/Visualizer';
 
@@ -19,10 +19,14 @@ const fileSize = (bytes = 0) => bytes < 1024 * 1024
   ? `${Math.max(1, Math.round(bytes / 1024))} KB`
   : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 
-function ThinkingIndicator() {
+function ThinkingIndicator({ mode = 'text' }) {
   const [stage, setStage] = useState(0);
-  const stages = ['Thinking...', 'Preparing...', 'Final drafting...'];
-  const widths = ['40%', '70%', '100%'];
+  const stageSets = {
+    text: ['Thinking...', 'Preparing...', 'Final drafting...'],
+    flashcards: ['Planning cards...', 'Designing visuals...', 'Building your deck...'],
+    video: ['Writing storyboard...', 'Rendering scenes...', 'Finalizing animation...'],
+  };
+  const stages = stageSets[mode] || stageSets.text;
 
   useEffect(() => {
     const timer1 = setTimeout(() => setStage(1), 2400);
@@ -36,10 +40,58 @@ function ThinkingIndicator() {
 
   return (
     <div className="shimmer-indicator-bubble">
-      <span key={stage} className="skeleton-shimmer-text shimmer-stage-animate">
+      <span key={stage} className="thinking-text shimmer-stage-animate">
         {stages[stage]}
       </span>
-      <div className="skeleton-progress-bar" style={{ width: widths[stage] }} />
+    </div>
+  );
+}
+
+function ConceptVisual({ visual }) {
+  if (!visual || visual.type === 'none') return null;
+  if (visual.type === 'process') {
+    return <div className="flash-process">{(visual.steps || []).map((step, index) => <React.Fragment key={`${step}-${index}`}><span>{step}</span>{index < visual.steps.length - 1 && <i>→</i>}</React.Fragment>)}</div>;
+  }
+  const labels = visual.labels || [];
+  const values = visual.values || [];
+  const maximum = Math.max(...values, 1);
+  if (visual.type === 'bar') {
+    return <div className="flash-graph"><strong>{visual.title}</strong><div className="bar-chart">{values.map((value, index) => <div className="bar-item" key={`${labels[index]}-${index}`}><span style={{ height: `${Math.max(8, (value / maximum) * 100)}%` }} /><small>{labels[index] || index + 1}</small></div>)}</div></div>;
+  }
+  if (visual.type === 'line' && values.length > 1) {
+    const points = values.map((value, index) => `${20 + (index * 260) / (values.length - 1)},${112 - (value / maximum) * 88}`).join(' ');
+    return <div className="flash-graph"><strong>{visual.title}</strong><svg className="line-chart" viewBox="0 0 300 130" role="img" aria-label={visual.title || 'Concept graph'}><line x1="20" y1="112" x2="285" y2="112" /><line x1="20" y1="18" x2="20" y2="112" /><polyline points={points} />{values.map((value, index) => <circle key={index} cx={20 + (index * 260) / (values.length - 1)} cy={112 - (value / maximum) * 88} r="4" />)}</svg><div className="line-labels">{labels.map((label) => <small key={label}>{label}</small>)}</div></div>;
+  }
+  return null;
+}
+
+function FlashcardDeck({ data }) {
+  const [index, setIndex] = useState(0);
+  const [flipped, setFlipped] = useState(false);
+  const cards = data?.cards || [];
+  useEffect(() => { setIndex(0); setFlipped(false); }, [data]);
+  if (!cards.length) return null;
+  const card = cards[index];
+  const move = (direction) => { setIndex((current) => (current + direction + cards.length) % cards.length); setFlipped(false); };
+  return (
+    <div className="flashcard-deck">
+      <div className="flashcard-toolbar"><span><Layers size={15} /> {data.title}</span><em>{index + 1} / {cards.length}</em></div>
+      <button className={`flashcard ${flipped ? 'is-flipped' : ''}`} onClick={() => setFlipped((value) => !value)} aria-label="Flip flashcard">
+        <span className="flashcard-side flashcard-front"><small>Concept {index + 1}</small><strong>{card.title}</strong><p>{card.prompt || card.summary}</p><em>Click to reveal</em></span>
+        <span className="flashcard-side flashcard-back"><small>Key idea</small><strong>{card.summary}</strong><ul>{card.points.map((point) => <li key={point}>{point}</li>)}</ul><ConceptVisual visual={card.visual} /></span>
+      </button>
+      <div className="flashcard-controls"><button onClick={() => move(-1)} aria-label="Previous card"><ChevronLeft size={17} /></button><div>{cards.map((item, dotIndex) => <button key={item.id || dotIndex} className={dotIndex === index ? 'is-active' : ''} onClick={() => { setIndex(dotIndex); setFlipped(false); }} aria-label={`Open card ${dotIndex + 1}`} />)}</div><button onClick={() => move(1)} aria-label="Next card"><ChevronRight size={17} /></button></div>
+    </div>
+  );
+}
+
+function AnimatedLesson({ data }) {
+  if (!data?.media_url) return null;
+  return (
+    <div className="animated-lesson">
+      {data.mime_type === 'video/mp4'
+        ? <video src={data.media_url} controls autoPlay playsInline preload="metadata" />
+        : <img src={data.media_url} alt={data.title || 'Animated lesson'} />}
     </div>
   );
 }
@@ -222,6 +274,7 @@ export default function Learn({ studentId, onRefreshProfile }) {
   const [newLesson, setNewLesson] = useState({ title: '', description: '' });
   const [creating, setCreating] = useState(false);
   const [inputMsg, setInputMsg] = useState('');
+  const [responseMode, setResponseMode] = useState('text');
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
@@ -274,6 +327,26 @@ export default function Learn({ studentId, onRefreshProfile }) {
     }
   };
 
+  const deleteSession = async (sessionId, event) => {
+    event?.stopPropagation();
+    event?.preventDefault();
+    if (!window.confirm('Are you sure you want to delete this chat session?')) return;
+
+    try {
+      const res = await fetch(`/api/learn/session/${sessionId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Could not delete chat session.');
+
+      setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+
+      if (activeSession?.id === sessionId) {
+        setActiveSession(null);
+        localStorage.removeItem(`edunexus:last-chat:${studentId}`);
+      }
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   useEffect(() => { loadSessions(); }, [studentId]);
   useEffect(() => { messageEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [activeSession?.messages, sending]);
 
@@ -307,7 +380,7 @@ export default function Learn({ studentId, onRefreshProfile }) {
     event?.preventDefault();
     const text = inputMsg.trim();
     if (!text || sending || !activeSession) return;
-    const optimistic = { id: `pending-${Date.now()}`, sender: 'user', text, created_at: new Date().toISOString() };
+    const optimistic = { id: `pending-${Date.now()}`, sender: 'user', text, requested_mode: responseMode, created_at: new Date().toISOString() };
     setActiveSession((previous) => ({ ...previous, messages: [...previous.messages, optimistic] }));
     setInputMsg('');
     setSending(true);
@@ -321,6 +394,7 @@ export default function Learn({ studentId, onRefreshProfile }) {
           session_id: activeSession.id,
           topic: activeSession.title,
           message: text,
+          response_mode: responseMode,
         }),
       });
       const data = await res.json();
@@ -330,6 +404,8 @@ export default function Learn({ studentId, onRefreshProfile }) {
         sender: 'tutor',
         text: data.response,
         visualization: data.visualization,
+        content_type: data.content_type || responseMode,
+        content_data: data.content_data,
         is_grounded: data.is_grounded,
         created_at: new Date().toISOString(),
       };
@@ -430,10 +506,11 @@ export default function Learn({ studentId, onRefreshProfile }) {
         <button className="new-chat-button" onClick={() => setShowCreate(true)}><Plus size={17} /> New chat</button>
         <label className="chat-search"><Search size={15} /><input value={sessionSearch} onChange={(event) => setSessionSearch(event.target.value)} placeholder="Search chats" /></label>
         <div className="session-list">
-          {loadingSessions ? <div className="sidebar-status"><Loader2 className="spin" size={18} /> Loading chats</div> : filteredSessions.length ? filteredSessions.map((session) => (
+          {loadingSessions ? <div className="sidebar-status"><Loader2 className="spin" size={18} /> <span className="skeleton-shimmer-text">Loading chats…</span></div> : filteredSessions.length ? filteredSessions.map((session) => (
             <button key={session.id} className={`session-item ${activeSession?.id === session.id ? 'is-active' : ''}`} onClick={() => openSession(session.id)}>
               <span className="session-item__icon"><MessageSquare size={16} /></span>
               <span className="session-item__copy"><strong>{session.title}</strong><small>{session.description}</small><em><Clock3 size={11} /> {formatDate(session.updated_at)}{session.attachment_count > 0 && <> · {session.attachment_count} file{session.attachment_count > 1 ? 's' : ''}</>}</em></span>
+              <span className="session-item__delete" onClick={(e) => deleteSession(session.id, e)} title="Delete chat" aria-label="Delete chat"><Trash2 size={13} /></span>
             </button>
           )) : <div className="sidebar-empty">No chats yet.<br />Create one to begin learning.</div>}
         </div>
@@ -443,7 +520,7 @@ export default function Learn({ studentId, onRefreshProfile }) {
       <section className="chat-panel">
         {error && <div className="chat-error"><span>{error}</span><button onClick={() => setError('')}><X size={15} /></button></div>}
         {openingSession ? (
-          <div className="chat-loading"><Loader2 className="spin" size={24} /> Opening chat…</div>
+          <div className="chat-loading"><Loader2 className="spin" size={24} /> <span className="skeleton-shimmer-text">Opening chat…</span></div>
         ) : !activeSession ? (
           <div className="chat-zero-state">
             <span className="zero-state-icon"><BookOpen size={30} /></span>
@@ -457,7 +534,10 @@ export default function Learn({ studentId, onRefreshProfile }) {
             <header className="chat-header">
               <button className="icon-button sidebar-toggle" onClick={() => setSidebarOpen(true)} aria-label="Show chats"><ArrowLeft size={18} /></button>
               <div className="chat-heading"><span>Lesson</span><h2>{activeSession.title}</h2><p>{activeSession.description}</p></div>
-              <button className="knowledge-button" onClick={checkUnderstanding} disabled={sending}><Sparkles size={16} /><span>Check understanding</span></button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button className="knowledge-button" onClick={checkUnderstanding} disabled={sending}><Sparkles size={16} /><span>Check understanding</span></button>
+                <button className="icon-button chat-delete-button" onClick={(e) => deleteSession(activeSession.id, e)} title="Delete this chat" aria-label="Delete this chat"><Trash2 size={16} /></button>
+              </div>
             </header>
 
             {activeSession.attachments.length > 0 && (
@@ -475,7 +555,11 @@ export default function Learn({ studentId, onRefreshProfile }) {
                   {message.sender === 'tutor' && <span className="tutor-avatar"><Sparkles size={15} /></span>}
                   <div className="message-bubble">
                     {message.is_grounded && <span className="grounded-label"><FileText size={12} /> Answered from your sources</span>}
-                    {message.sender === 'tutor' ? (
+                    {message.sender === 'tutor' && message.content_type === 'flashcards' ? (
+                      <FlashcardDeck data={message.content_data} />
+                    ) : message.sender === 'tutor' && message.content_type === 'video' ? (
+                      <AnimatedLesson data={message.content_data} />
+                    ) : message.sender === 'tutor' ? (
                       <ProgressiveMessageText
                         text={message.text}
                         isNew={message.id === streamingMessageId}
@@ -486,7 +570,6 @@ export default function Learn({ studentId, onRefreshProfile }) {
                         <FormattedText content={message.text} />
                       </div>
                     )}
-                    {message.visualization && <Visualizer data={message.visualization} />}
                     <time>{formatDate(message.created_at)}</time>
                   </div>
                 </div>
@@ -494,20 +577,26 @@ export default function Learn({ studentId, onRefreshProfile }) {
               {sending && (
                 <div className="message-row message-row--tutor">
                   <span className="tutor-avatar"><Sparkles size={15} /></span>
-                  <ThinkingIndicator />
+                  <ThinkingIndicator mode={responseMode} />
                 </div>
               )}
               <div ref={messageEndRef} />
             </div>
 
             <div className="composer-wrap">
+              <div className="response-mode-picker" aria-label="Response format">
+                <span>Respond with</span>
+                <button type="button" className={responseMode === 'text' ? 'is-active' : ''} onClick={() => setResponseMode('text')}><Type size={14} /> Text</button>
+                <button type="button" className={responseMode === 'flashcards' ? 'is-active' : ''} onClick={() => setResponseMode('flashcards')}><Layers size={14} /> Flashcards</button>
+                <button type="button" className={responseMode === 'video' ? 'is-active' : ''} onClick={() => setResponseMode('video')}><Play size={14} /> Animated video</button>
+              </div>
               <form className="chat-composer" onSubmit={sendMessage}>
                 <input ref={fileInputRef} type="file" accept=".pdf,.txt" onChange={uploadFile} hidden />
                 <button type="button" className="composer-tool" onClick={() => fileInputRef.current?.click()} disabled={uploading} aria-label="Attach PDF or text file">{uploading ? <Loader2 className="spin" size={19} /> : <Paperclip size={19} />}</button>
                 <textarea rows="1" value={inputMsg} onChange={(event) => setInputMsg(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); sendMessage(); } }} placeholder={`Message your ${activeSession.title} tutor…`} />
                 <button className="composer-send" type="submit" disabled={!inputMsg.trim() || sending} aria-label="Send message"><Send size={18} /></button>
               </form>
-              <p>Attach PDF or TXT files for source-grounded answers. Enter to send · Shift + Enter for a new line.</p>
+              <p>Choose a response format, then ask your question. Enter to send · Shift + Enter for a new line.</p>
             </div>
 
             {checkQuiz && (

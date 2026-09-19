@@ -34,3 +34,17 @@ def test_attachments_remain_linked_to_their_session(tmp_path):
     assert reopened["attachments"][0]["display_name"] == "lesson.pdf"
     assert memory.get_attachment(attachment["id"])["file_path"] == str(document)
 
+
+def test_structured_responses_are_restored_with_chat_history(tmp_path):
+    memory = ChatMemory(str(tmp_path / "chat.db"))
+    created = memory.create_session("student_1", "Networks", "Learn packet routing")
+    deck = {"title": "Routing", "cards": [{"title": "Hop", "points": ["One link"]}]}
+
+    memory.add_message(
+        created["id"], "tutor", "Interactive flashcards: Routing",
+        content_type="flashcards", content_data=deck,
+    )
+
+    message = memory.get_session(created["id"])["messages"][0]
+    assert message["content_type"] == "flashcards"
+    assert message["content_data"] == deck

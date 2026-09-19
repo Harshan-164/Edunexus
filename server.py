@@ -2,6 +2,7 @@ import os
 import uuid
 import datetime
 import logging
+import json
 from typing import Dict, Any, List, Optional
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,6 +17,7 @@ from backend.memory.learner_memory import LearnerMemory
 from backend.memory.chat_memory import ChatMemory
 from backend.memory.rag_scope import is_explicit_document_request, select_relevant_document_chunks
 from backend.memory.syllabus_memory import SyllabusMemory
+from backend.media.lesson_media import normalize_flashcards, normalize_storyboard, parse_json_response, render_animated_lesson
 from backend.graph.workflow import create_workflow, is_answer_correct
 from backend.agents.diagnostic import DiagnosticAgent, DiagnosisAgent, DiagnosticAndDiagnosisAgent
 from backend.agents.remediation import RemediationAgent
@@ -79,8 +81,10 @@ workflow = create_workflow(llm, learner_memory)
 
 # UPLOAD DIR & STATIC DIR
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "backend", "data", "uploads")
+MEDIA_DIR = os.path.join(os.path.dirname(__file__), "backend", "data", "generated")
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+os.makedirs(MEDIA_DIR, exist_ok=True)
 os.makedirs(STATIC_DIR, exist_ok=True)
 
 if os.path.exists(STATIC_DIR):
@@ -102,6 +106,7 @@ class LearnChatRequest(BaseModel):
     message: str
     document_name: Optional[str] = None
     session_id: Optional[str] = None
+    response_mode: str = "text"
 
 class CreateChatSessionRequest(BaseModel):
     student_id: str = "student_1"
@@ -151,10 +156,10 @@ RAG_RELEVANCE_THRESHOLD = float(os.getenv("RAG_RELEVANCE_THRESHOLD", "0.42"))
 # -------------------------------------------------------------------
 # HELPER FUNCTIONS FOR SAFE VISUALIZATIONS
 # -------------------------------------------------------------------
-def generate_safe_visualization(topic: str, text: str) -> Optional[Dict[str, Any]]:
-    topic_lower = (topic + " " + text).lower()
+def generate_safe_visualization(topic: str, text: str = "") -> Optional[Dict[str, Any]]:
+    topic_lower = (topic or "").lower().strip()
     
-    if "slice" in topic_lower or "slicing" in topic_lower or "array index" in topic_lower or "indexing" in topic_lower:
+    if "python slicing" in topic_lower or ("slicing" in topic_lower and "array" in topic_lower):
         return {
             "type": "array_indexing",
             "title": "Array Indexing & Slicing",
@@ -164,54 +169,6 @@ def generate_safe_visualization(topic: str, text: str) -> Optional[Dict[str, Any
             "highlight_slice": [1, 4],
             "explanation": "Slice [1:4] extracts indices 1, 2, and 3 ('y', 't', 'h'). Stop index 4 is excluded."
         }
-    
-    if "stack" in topic_lower or "push" in topic_lower or "pop" in topic_lower:
-        return {
-            "type": "stack_operations",
-            "title": "Stack Data Structure (LIFO)",
-            "stack": ["Item 1", "Item 2", "Item 3"],
-            "operation": "PUSH ('Item 4')",
-            "explanation": "Last-In, First-Out (LIFO). Elements are pushed and popped from the top of the stack."
-        }
-        
-    if "binary search" in topic_lower or "bsearch" in topic_lower:
-        return {
-            "type": "binary_search",
-            "title": "Binary Search Interval Shrinking",
-            "array": [2, 5, 8, 12, 16, 23, 38, 56, 72, 91],
-            "target": 23,
-            "low": 0,
-            "high": 9,
-            "mid": 4,
-            "mid_val": 16,
-            "explanation": "Mid element 16 < Target 23. Shrink search window to right sub-array [index 5..9]."
-        }
-
-    if "sort" in topic_lower or "sorting" in topic_lower:
-        return {
-            "type": "sorting",
-            "title": "Step-by-step Array Sorting",
-            "steps": [
-                {"step": 1, "array": [5, 2, 8, 1, 4], "comparing": [0, 1]},
-                {"step": 2, "array": [2, 5, 8, 1, 4], "comparing": [1, 2]},
-                {"step": 3, "array": [2, 5, 1, 8, 4], "comparing": [2, 3]}
-            ],
-            "explanation": "Comparing adjacent elements and swapping when left > right."
-        }
-
-    if "tree" in topic_lower or "recursion" in topic_lower:
-        return {
-            "type": "tree_traversal",
-            "title": "Binary Tree Traversal",
-            "nodes": [
-                {"id": "A", "label": "Root (10)"},
-                {"id": "B", "label": "Left (5)"},
-                {"id": "C", "label": "Right (15)"}
-            ],
-            "visited": ["A", "B"],
-            "explanation": "In-order traversal visits Left Subtree -> Root -> Right Subtree."
-        }
-
     return None
 
 # -------------------------------------------------------------------
@@ -247,6 +204,13 @@ def get_chat_session(session_id: str):
     if not session:
         raise HTTPException(status_code=404, detail="Chat session not found.")
     return session
+
+@app.delete("/api/learn/session/{session_id}")
+def delete_chat_session(session_id: str):
+    success = chat_memory.delete_session(session_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Chat session not found.")
+    return {"status": "success", "message": f"Chat session {session_id} deleted."}
 
 @app.post("/api/learn/session/{session_id}/documents", status_code=status.HTTP_201_CREATED)
 async def upload_session_document(session_id: str, file: UploadFile = File(...)):
@@ -300,6 +264,17 @@ def download_session_attachment(attachment_id: str):
         media_type=attachment.get("content_type") or "application/octet-stream",
         filename=attachment["display_name"],
     )
+
+@app.get("/api/learn/media/{filename}")
+def get_generated_lesson_media(filename: str):
+    safe_name = os.path.basename(filename)
+    if safe_name != filename or not safe_name.endswith((".mp4", ".gif")):
+        raise HTTPException(status_code=400, detail="Invalid media filename.")
+    media_path = os.path.join(MEDIA_DIR, safe_name)
+    if not os.path.isfile(media_path):
+        raise HTTPException(status_code=404, detail="Generated media not found.")
+    media_type = "video/mp4" if safe_name.endswith(".mp4") else "image/gif"
+    return FileResponse(media_path, media_type=media_type)
 
 @app.post("/api/documents/upload")
 async def upload_document(file: UploadFile = File(...)):
@@ -399,17 +374,20 @@ async def learn_chat(req: LearnChatRequest):
         "- Do not output raw asterisks without a markdown purpose."
     )
 
+    response_mode = req.response_mode.lower().strip()
+    if response_mode not in {"text", "flashcards", "video"}:
+        raise HTTPException(status_code=400, detail="Response mode must be text, flashcards, or video.")
+
     if is_grounded:
-        prompt = (
+        knowledge_prompt = (
             f"You are the EduNexus AI tutor. Continue the lesson naturally and maintain conversational flow using the chat history.\n"
             f"{session_context}{history_context}"
             f"Reference Material from Uploaded Document:\n{grounded_context}\n\n"
             f"Student Question: {req.message}\n\n"
             f"Answer the student's question accurately using the relevant material from their uploaded document.\n"
-            f"{formatting_rules}"
         )
     else:
-        prompt = (
+        knowledge_prompt = (
             f"You are the EduNexus AI tutor. Answer the student's current question directly using general knowledge. "
             f"Use prior turns only when they are relevant to the current question.\n"
             f"{session_context}{history_context}"
@@ -417,24 +395,65 @@ async def learn_chat(req: LearnChatRequest):
             f"The uploaded files are not relevant to this question. Ignore them completely: do not mention them, "
             f"do not discuss their subject, and do not ask permission to answer outside them. "
             f"Prioritize the current question even when it differs from the lesson title or earlier conversation.\n"
-            f"{formatting_rules}"
         )
 
     if req.session_id:
         chat_memory.add_message(req.session_id, "user", req.message)
 
-    response_msg = llm.invoke(prompt)
-    answer_text = response_msg.content if hasattr(response_msg, 'content') else str(response_msg)
+    content_data = None
+    if response_mode == "flashcards":
+        prompt = knowledge_prompt + (
+            "Create interactive teaching flashcards for the concept. Keep every point crisp and self-contained. "
+            "Use a visual only when it materially improves understanding: bar or line for numeric relationships, "
+            "process for sequences, otherwise none. Return ONLY valid JSON with this exact shape:\n"
+            '{"title":"deck title","cards":[{"title":"card title","summary":"one-sentence idea",'
+            '"prompt":"short front-side prompt","points":["point 1","point 2"],'
+            '"visual":{"type":"none|bar|line|process","title":"visual title",'
+            '"labels":["A","B"],"values":[1,2],"steps":["step 1","step 2"]}}]}\n'
+            "Generate 4 to 7 cards. Do not include markdown or commentary outside the JSON."
+        )
+        raw_response = llm.invoke(prompt)
+        raw_text = raw_response.content if hasattr(raw_response, "content") else str(raw_response)
+        try:
+            content_data = normalize_flashcards(parse_json_response(raw_text), req.message)
+        except (ValueError, TypeError, json.JSONDecodeError) as exc:
+            logger.warning("Flashcard JSON fallback used: %s", exc)
+            content_data = normalize_flashcards({}, req.message)
+        answer_text = f"Interactive flashcards: {content_data['title']}"
+    elif response_mode == "video":
+        prompt = knowledge_prompt + (
+            "Design a concise animated teaching storyboard. Each scene must communicate one idea visually with very little text. "
+            "The storyboard will be converted into safe Manim code when Manim is available, with local video and animation fallbacks. "
+            "Return ONLY valid JSON with this exact shape:\n"
+            '{"title":"lesson title","scenes":[{"title":"scene title","caption":"short explanation",'
+            '"points":["animated point 1","animated point 2"],"accent":"teal|blue|violet|amber"}]}\n'
+            "Generate 3 to 6 scenes. Do not include markdown, Python, or commentary outside the JSON."
+        )
+        raw_response = llm.invoke(prompt)
+        raw_text = raw_response.content if hasattr(raw_response, "content") else str(raw_response)
+        try:
+            storyboard = normalize_storyboard(parse_json_response(raw_text), req.message)
+        except (ValueError, TypeError, json.JSONDecodeError) as exc:
+            logger.warning("Storyboard JSON fallback used: %s", exc)
+            storyboard = normalize_storyboard({}, req.message)
+        content_data = render_animated_lesson(storyboard, MEDIA_DIR)
+        answer_text = f"Animated lesson: {content_data['title']}"
+    else:
+        prompt = knowledge_prompt + formatting_rules
+        response_msg = llm.invoke(prompt)
+        answer_text = response_msg.content if hasattr(response_msg, 'content') else str(response_msg)
 
-    visualization = generate_safe_visualization(req.topic, answer_text)
+    visualization = generate_safe_visualization(req.topic, answer_text) if not req.session_id and response_mode == "text" else None
     saved_message = None
     if req.session_id:
         saved_message = chat_memory.add_message(
             req.session_id,
             "tutor",
             answer_text,
-            visualization=visualization,
+            visualization=None,
             is_grounded=is_grounded,
+            content_type=response_mode,
+            content_data=content_data,
         )
 
     primary_document = attachments[0]["display_name"] if attachments else req.document_name
@@ -453,6 +472,8 @@ async def learn_chat(req: LearnChatRequest):
         "visualization": visualization,
         "is_grounded": is_grounded,
         "document_name": primary_document,
+        "content_type": response_mode,
+        "content_data": content_data,
         "message": saved_message,
     }
 

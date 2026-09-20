@@ -58,6 +58,24 @@ class SyllabusMemory:
         with open(self.metadata_path, 'w', encoding='utf-8') as f:
             json.dump(self.metadata, f, ensure_ascii=False, indent=2)
 
+    def delete_documents(self, doc_names: list):
+        """Removes all chunks for the specified document names and rebuilds the FAISS index."""
+        if not doc_names or not self.metadata:
+            return
+        doc_set = set(doc_names)
+        remaining_chunks = [c for c in self.metadata if c.get("document") not in doc_set]
+        if len(remaining_chunks) == len(self.metadata):
+            return
+        
+        self.metadata = remaining_chunks
+        self.index = faiss.IndexFlatIP(self.embedding_dim)
+        if remaining_chunks:
+            texts = [c["text"] for c in remaining_chunks]
+            embeddings = self.model.encode(texts, convert_to_numpy=True)
+            faiss.normalize_L2(embeddings)
+            self.index.add(embeddings)
+        self.save()
+
     def _chunk_text(self, text: str, page_num: int, doc_name: str) -> list:
         """Splits text into chunks of specified size and overlap."""
         chunks = []

@@ -225,6 +225,22 @@ class ChatMemory:
             ).fetchall()
         return [self._message_dict(row) for row in reversed(rows)]
 
+    def get_messages_for_topic(self, student_id: str, topic: str, limit: int = 50) -> List[Dict[str, Any]]:
+        with self._connect() as connection:
+            session_rows = connection.execute(
+                "SELECT id FROM chat_sessions WHERE student_id = ? AND LOWER(TRIM(title)) = LOWER(TRIM(?))",
+                (student_id, topic),
+            ).fetchall()
+            if not session_rows:
+                return []
+            session_ids = [r["id"] for r in session_rows]
+            placeholders = ",".join("?" for _ in session_ids)
+            rows = connection.execute(
+                f"SELECT * FROM chat_messages WHERE session_id IN ({placeholders}) ORDER BY created_at ASC LIMIT ?",
+                (*session_ids, limit),
+            ).fetchall()
+        return [self._message_dict(row) for row in rows]
+
     def add_attachment(
         self,
         session_id: str,

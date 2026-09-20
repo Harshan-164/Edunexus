@@ -25,3 +25,4 @@ backend/data/uploads/*
 !backend/data/uploads/.gitkeep
 backend/data/generated/*
 !backend/data/generated/.gitkeep
+backend/services/ethereal_creds.json

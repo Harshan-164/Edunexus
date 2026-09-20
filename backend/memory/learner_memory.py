@@ -353,6 +353,50 @@ class LearnerMemory:
 
             return list(topics_dict.values())
 
+    def delete_topic_data(self, student_id: str, topic: str):
+        """Deletes all learning records, events, mastery, and misconceptions for a given student and topic."""
+        with self.Session() as session:
+            session.query(LearningEvent).filter_by(student_id=student_id, topic=topic).delete()
+            session.query(Misconception).filter_by(student_id=student_id, topic=topic).delete()
+            session.query(SubconceptMastery).filter_by(student_id=student_id, topic=topic).delete()
+            session.query(Verification).filter_by(student_id=student_id, topic=topic).delete()
+            session.query(Intervention).filter_by(student_id=student_id, topic=topic).delete()
+            attempts = session.query(Attempt).filter_by(student_id=student_id, topic=topic).all()
+            for att in attempts:
+                session.query(QuestionResult).filter_by(attempt_id=att.attempt_id).delete()
+                session.delete(att)
+            session.commit()
+
+    def get_quiz_history(self, student_id: str, topic: str):
+        with self.Session() as session:
+            attempts = session.query(Attempt).filter_by(student_id=student_id, topic=topic).all()
+            results = []
+            for att in attempts:
+                q_results = session.query(QuestionResult).filter_by(attempt_id=att.attempt_id).all()
+                for qr in q_results:
+                    results.append({
+                        "sub_concept": qr.sub_concept,
+                        "question": qr.question,
+                        "student_answer": qr.student_answer,
+                        "correct_answer": qr.correct_answer,
+                        "is_correct": qr.is_correct
+                    })
+            return results
+
+    def get_topic_misconceptions(self, student_id: str, topic: str):
+        with self.Session() as session:
+            return [
+                {"sub_concept": m.sub_concept, "misconception": m.misconception, "evidence": m.evidence}
+                for m in session.query(Misconception).filter_by(student_id=student_id, topic=topic, active=True).all()
+            ]
+
+    def get_topic_masteries(self, student_id: str, topic: str):
+        with self.Session() as session:
+            return [
+                {"sub_concept": sm.sub_concept, "accuracy": sm.accuracy, "status": sm.status}
+                for sm in session.query(SubconceptMastery).filter_by(student_id=student_id, topic=topic).all()
+            ]
+
     def get_learner_summary(self, student_id: str) -> Dict[str, Any]:
         with self.Session() as session:
             student = session.query(Student).filter_by(student_id=student_id).first()
@@ -418,5 +462,8 @@ class LearnerMemory:
             for m in misconceptions:
                 m.active = False
             session.commit()
+
+    get_learner_profile = get_learner_summary
+
 
 

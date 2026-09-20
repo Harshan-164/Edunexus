@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  ArrowLeft, BookOpen, CheckCircle2, ChevronLeft, ChevronRight, Clock3, FileText, Layers, Loader2,
-  MessageSquare, Paperclip, Play, Plus, Search, Send, Sparkles, Trash2, Type, X,
+  ArrowLeft, BookOpen, CheckCircle2, Clock3, FileText, Layers, Loader2,
+  MessageSquare, Paperclip, Play, Plus, Search, Send, Settings2, Sparkles, Trash2, Type, X,
 } from 'lucide-react';
+import FlashcardDeck from '../components/FlashcardDeck';
 import Visualizer from '../components/Visualizer';
 
 const formatDate = (value) => {
@@ -18,6 +19,82 @@ const formatDate = (value) => {
 const fileSize = (bytes = 0) => bytes < 1024 * 1024
   ? `${Math.max(1, Math.round(bytes / 1024))} KB`
   : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+
+const DEFAULT_LEARN_SETTINGS = {
+  chat_style: 'auto',
+  chat_custom_instruction: '',
+  animation_style: 'auto',
+  animation_content: 'auto',
+  animation_engine: 'auto',
+  animation_custom_instruction: '',
+  flashcard_style: 'auto',
+  flashcard_content: 'auto',
+  flashcard_custom_instruction: '',
+};
+
+const loadLearnSettings = () => {
+  try {
+    const saved = JSON.parse(localStorage.getItem('edunexus:learn-settings') || '{}');
+    return { ...DEFAULT_LEARN_SETTINGS, ...saved };
+  } catch {
+    return { ...DEFAULT_LEARN_SETTINGS };
+  }
+};
+
+function SettingChoice({ label, description, value, options, onChange }) {
+  return (
+    <div className="learn-setting-row">
+      <div className="learn-setting-row__copy"><strong>{label}</strong>{description && <small>{description}</small>}</div>
+      <div className="learn-setting-options" role="group" aria-label={label}>
+        {options.map((option) => (
+          <button key={option.value} type="button" className={value === option.value ? 'is-active' : ''} onClick={() => onChange(option.value)}>{option.label}</button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function LearnSettingsDialog({ draft, setDraft, onClose, onSave, onReset }) {
+  const setValue = (key, value) => setDraft((previous) => ({ ...previous, [key]: value }));
+  const standardStyles = [{ value: 'auto', label: 'Auto' }, { value: 'simple', label: 'Simple' }, { value: 'vibrant', label: 'Vibrant' }];
+
+  return (
+    <div className="learn-settings-overlay" role="dialog" aria-modal="true" aria-labelledby="learn-settings-title" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <form className="learn-settings-dialog" onSubmit={(event) => { event.preventDefault(); onSave(); }}>
+        <header className="learn-settings-dialog__header">
+          <span className="learn-settings-dialog__icon"><Settings2 size={20} /></span>
+          <div><span>Learning workspace</span><h2 id="learn-settings-title">Response settings</h2><p>Personalize replies generated inside Learn. Auto keeps the current behavior.</p></div>
+          <button type="button" className="icon-button" onClick={onClose} aria-label="Close settings"><X size={18} /></button>
+        </header>
+
+        <div className="learn-settings-body">
+          <section className="learn-settings-section">
+            <div className="learn-settings-section__title"><Type size={16} /><div><strong>Chat responses</strong><small>Used when “Text” is selected.</small></div></div>
+            <SettingChoice label="Chat style" value={draft.chat_style} options={[{ value: 'auto', label: 'Auto' }, { value: 'crisp', label: 'Crisp' }, { value: 'detailed', label: 'Detailed' }]} onChange={(value) => setValue('chat_style', value)} />
+            <label className="learn-settings-field"><span>Custom instruction for chat</span><textarea rows="3" maxLength="2000" value={draft.chat_custom_instruction} onChange={(event) => setValue('chat_custom_instruction', event.target.value)} placeholder="e.g. Explain with Python examples and avoid unnecessary jargon." /></label>
+          </section>
+
+          <section className="learn-settings-section">
+            <div className="learn-settings-section__title"><Play size={16} /><div><strong>Animated videos</strong><small>Controls storyboard detail and visual treatment.</small></div></div>
+            <SettingChoice label="Animation style" value={draft.animation_style} options={standardStyles} onChange={(value) => setValue('animation_style', value)} />
+            <SettingChoice label="Animation content" value={draft.animation_content} options={[{ value: 'auto', label: 'Auto' }, { value: 'less', label: 'Less' }, { value: 'more', label: 'More' }]} onChange={(value) => setValue('animation_content', value)} />
+            <SettingChoice label="Animation engine" description="Auto chooses the best engine for the topic and still uses backups if rendering fails." value={draft.animation_engine} options={[{ value: 'auto', label: 'Auto' }, { value: 'manim', label: 'Manim' }, { value: 'motion_graphics', label: 'Motion graphics' }]} onChange={(value) => setValue('animation_engine', value)} />
+            <label className="learn-settings-field"><span>Custom instruction for animation</span><textarea rows="3" maxLength="2000" value={draft.animation_custom_instruction} onChange={(event) => setValue('animation_custom_instruction', event.target.value)} placeholder="e.g. Use a dark background and pause on every algorithm state." /></label>
+          </section>
+
+          <section className="learn-settings-section">
+            <div className="learn-settings-section__title"><Layers size={16} /><div><strong>Flashcards</strong><small>Controls card design and explanation depth.</small></div></div>
+            <SettingChoice label="Flashcard style" value={draft.flashcard_style} options={standardStyles} onChange={(value) => setValue('flashcard_style', value)} />
+            <SettingChoice label="Flashcard content" value={draft.flashcard_content} options={[{ value: 'auto', label: 'Auto' }, { value: 'crisp', label: 'Crisp' }, { value: 'detailed', label: 'Detailed' }]} onChange={(value) => setValue('flashcard_content', value)} />
+            <label className="learn-settings-field"><span>Custom instruction for flashcards</span><textarea rows="3" maxLength="2000" value={draft.flashcard_custom_instruction} onChange={(event) => setValue('flashcard_custom_instruction', event.target.value)} placeholder="e.g. Add one practical example and a quick recall question to every card." /></label>
+          </section>
+        </div>
+
+        <footer className="learn-settings-actions"><button type="button" className="btn-secondary" onClick={onReset}>Reset to Auto</button><div><button type="button" className="btn-secondary" onClick={onClose}>Cancel</button><button type="submit" className="btn-primary">Save settings</button></div></footer>
+      </form>
+    </div>
+  );
+}
 
 function ThinkingIndicator({ mode = 'text' }) {
   const [stage, setStage] = useState(0);
@@ -39,51 +116,14 @@ function ThinkingIndicator({ mode = 'text' }) {
   }, []);
 
   return (
-    <div className="shimmer-indicator-bubble">
-      <span key={stage} className="thinking-text shimmer-stage-animate">
-        {stages[stage]}
-      </span>
+    <div className={`shimmer-indicator-bubble shimmer-indicator-bubble--${mode}`}>
+      <div className="generation-skeleton" aria-hidden="true"><i /><i /><i /></div>
+      <span key={stage} className="thinking-text shimmer-stage-animate">{stages[stage]}</span>
     </div>
   );
 }
 
-function ConceptVisual({ visual }) {
-  if (!visual || visual.type === 'none') return null;
-  if (visual.type === 'process') {
-    return <div className="flash-process">{(visual.steps || []).map((step, index) => <React.Fragment key={`${step}-${index}`}><span>{step}</span>{index < visual.steps.length - 1 && <i>→</i>}</React.Fragment>)}</div>;
-  }
-  const labels = visual.labels || [];
-  const values = visual.values || [];
-  const maximum = Math.max(...values, 1);
-  if (visual.type === 'bar') {
-    return <div className="flash-graph"><strong>{visual.title}</strong><div className="bar-chart">{values.map((value, index) => <div className="bar-item" key={`${labels[index]}-${index}`}><span style={{ height: `${Math.max(8, (value / maximum) * 100)}%` }} /><small>{labels[index] || index + 1}</small></div>)}</div></div>;
-  }
-  if (visual.type === 'line' && values.length > 1) {
-    const points = values.map((value, index) => `${20 + (index * 260) / (values.length - 1)},${112 - (value / maximum) * 88}`).join(' ');
-    return <div className="flash-graph"><strong>{visual.title}</strong><svg className="line-chart" viewBox="0 0 300 130" role="img" aria-label={visual.title || 'Concept graph'}><line x1="20" y1="112" x2="285" y2="112" /><line x1="20" y1="18" x2="20" y2="112" /><polyline points={points} />{values.map((value, index) => <circle key={index} cx={20 + (index * 260) / (values.length - 1)} cy={112 - (value / maximum) * 88} r="4" />)}</svg><div className="line-labels">{labels.map((label) => <small key={label}>{label}</small>)}</div></div>;
-  }
-  return null;
-}
 
-function FlashcardDeck({ data }) {
-  const [index, setIndex] = useState(0);
-  const [flipped, setFlipped] = useState(false);
-  const cards = data?.cards || [];
-  useEffect(() => { setIndex(0); setFlipped(false); }, [data]);
-  if (!cards.length) return null;
-  const card = cards[index];
-  const move = (direction) => { setIndex((current) => (current + direction + cards.length) % cards.length); setFlipped(false); };
-  return (
-    <div className="flashcard-deck">
-      <div className="flashcard-toolbar"><span><Layers size={15} /> {data.title}</span><em>{index + 1} / {cards.length}</em></div>
-      <button className={`flashcard ${flipped ? 'is-flipped' : ''}`} onClick={() => setFlipped((value) => !value)} aria-label="Flip flashcard">
-        <span className="flashcard-side flashcard-front"><small>Concept {index + 1}</small><strong>{card.title}</strong><p>{card.prompt || card.summary}</p><em>Click to reveal</em></span>
-        <span className="flashcard-side flashcard-back"><small>Key idea</small><strong>{card.summary}</strong><ul>{card.points.map((point) => <li key={point}>{point}</li>)}</ul><ConceptVisual visual={card.visual} /></span>
-      </button>
-      <div className="flashcard-controls"><button onClick={() => move(-1)} aria-label="Previous card"><ChevronLeft size={17} /></button><div>{cards.map((item, dotIndex) => <button key={item.id || dotIndex} className={dotIndex === index ? 'is-active' : ''} onClick={() => { setIndex(dotIndex); setFlipped(false); }} aria-label={`Open card ${dotIndex + 1}`} />)}</div><button onClick={() => move(1)} aria-label="Next card"><ChevronRight size={17} /></button></div>
-    </div>
-  );
-}
 
 function AnimatedLesson({ data }) {
   if (!data?.media_url) return null;
@@ -275,6 +315,9 @@ export default function Learn({ studentId, onRefreshProfile }) {
   const [creating, setCreating] = useState(false);
   const [inputMsg, setInputMsg] = useState('');
   const [responseMode, setResponseMode] = useState('text');
+  const [learnSettings, setLearnSettings] = useState(loadLearnSettings);
+  const [settingsDraft, setSettingsDraft] = useState(loadLearnSettings);
+  const [showSettings, setShowSettings] = useState(false);
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
@@ -285,6 +328,19 @@ export default function Learn({ studentId, onRefreshProfile }) {
   const [quizResult, setQuizResult] = useState(null);
   const messageEndRef = useRef(null);
   const fileInputRef = useRef(null);
+
+  const openSettings = () => {
+    setSettingsDraft({ ...learnSettings });
+    setShowSettings(true);
+  };
+
+  const saveSettings = () => {
+    setLearnSettings(settingsDraft);
+    localStorage.setItem('edunexus:learn-settings', JSON.stringify(settingsDraft));
+    setShowSettings(false);
+  };
+
+  const resetSettings = () => setSettingsDraft({ ...DEFAULT_LEARN_SETTINGS });
 
   const loadSessions = async (preferredId) => {
     setLoadingSessions(true);
@@ -336,12 +392,18 @@ export default function Learn({ studentId, onRefreshProfile }) {
       const res = await fetch(`/api/learn/session/${sessionId}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Could not delete chat session.');
 
-      setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+      const remaining = sessions.filter((s) => s.id !== sessionId);
+      setSessions(remaining);
 
       if (activeSession?.id === sessionId) {
-        setActiveSession(null);
-        localStorage.removeItem(`edunexus:last-chat:${studentId}`);
+        if (remaining.length > 0) {
+          await openSession(remaining[0].id, false);
+        } else {
+          setActiveSession(null);
+          localStorage.removeItem(`edunexus:last-chat:${studentId}`);
+        }
       }
+      onRefreshProfile?.();
     } catch (err) {
       setError(err.message);
     }
@@ -395,6 +457,7 @@ export default function Learn({ studentId, onRefreshProfile }) {
           topic: activeSession.title,
           message: text,
           response_mode: responseMode,
+          preferences: learnSettings,
         }),
       });
       const data = await res.json();
@@ -501,7 +564,10 @@ export default function Learn({ studentId, onRefreshProfile }) {
       <aside className={`chat-sidebar ${sidebarOpen ? 'is-open' : ''}`}>
         <div className="chat-sidebar__header">
           <div><span>Learning workspace</span><strong>Your chats</strong></div>
-          <button className="icon-button mobile-sidebar-close" onClick={() => setSidebarOpen(false)} aria-label="Close sidebar"><X size={18} /></button>
+          <div className="chat-sidebar__tools">
+            <button className="icon-button" onClick={openSettings} title="Learn settings" aria-label="Open Learn settings"><Settings2 size={17} /></button>
+            <button className="icon-button mobile-sidebar-close" onClick={() => setSidebarOpen(false)} aria-label="Close sidebar"><X size={18} /></button>
+          </div>
         </div>
         <button className="new-chat-button" onClick={() => setShowCreate(true)}><Plus size={17} /> New chat</button>
         <label className="chat-search"><Search size={15} /><input value={sessionSearch} onChange={(event) => setSessionSearch(event.target.value)} placeholder="Search chats" /></label>
@@ -535,6 +601,7 @@ export default function Learn({ studentId, onRefreshProfile }) {
               <button className="icon-button sidebar-toggle" onClick={() => setSidebarOpen(true)} aria-label="Show chats"><ArrowLeft size={18} /></button>
               <div className="chat-heading"><span>Lesson</span><h2>{activeSession.title}</h2><p>{activeSession.description}</p></div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button className="icon-button learn-header-settings" onClick={openSettings} title="Learn settings" aria-label="Open Learn settings"><Settings2 size={17} /></button>
                 <button className="knowledge-button" onClick={checkUnderstanding} disabled={sending}><Sparkles size={16} /><span>Check understanding</span></button>
                 <button className="icon-button chat-delete-button" onClick={(e) => deleteSession(activeSession.id, e)} title="Delete this chat" aria-label="Delete this chat"><Trash2 size={16} /></button>
               </div>
@@ -613,6 +680,8 @@ export default function Learn({ studentId, onRefreshProfile }) {
           </>
         )}
       </section>
+
+      {showSettings && <LearnSettingsDialog draft={settingsDraft} setDraft={setSettingsDraft} onClose={() => setShowSettings(false)} onSave={saveSettings} onReset={resetSettings} />}
 
       {showCreate && (
         <div className="create-chat-overlay" role="dialog" aria-modal="true" aria-labelledby="create-chat-title">

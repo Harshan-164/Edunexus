@@ -25,10 +25,11 @@ import {
 } from 'lucide-react';
 
 const THEMES = [
-  { id: 'nexus', name: 'Nexus', description: 'Teal and blue', colors: ['#2dd4bf', '#60a5fa', '#07101d'] },
-  { id: 'ocean', name: 'Ocean', description: 'Aqua and cobalt', colors: ['#22d3ee', '#3b82f6', '#061525'] },
-  { id: 'violet', name: 'Violet', description: 'Purple and orchid', colors: ['#a78bfa', '#e879f9', '#110d22'] },
-  { id: 'ember', name: 'Ember', description: 'Amber and coral', colors: ['#f59e0b', '#fb7185', '#1a0e12'] },
+  { id: 'nexus', name: 'Dark Nexus', description: 'Teal & Cyan dark', colors: ['#2dd4bf', '#60a5fa', '#07101d'] },
+  { id: 'light', name: 'Clean Light', description: 'Crisp bright & slate', colors: ['#ffffff', '#0d9488', '#38bdf8'] },
+  { id: 'ocean', name: 'Dark Ocean', description: 'Aqua and cobalt', colors: ['#22d3ee', '#3b82f6', '#061525'] },
+  { id: 'violet', name: 'Dark Violet', description: 'Purple and orchid', colors: ['#a78bfa', '#e879f9', '#110d22'] },
+  { id: 'ember', name: 'Dark Ember', description: 'Amber and coral', colors: ['#f59e0b', '#fb7185', '#1a0e12'] },
 ];
 
 const renderBadgeIcon = (iconName, unlocked) => {
@@ -567,7 +568,7 @@ export default function ProfileModal({
               <div style={{ fontSize: '0.9rem', fontWeight: 650, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <Palette size={16} /> Workspace Theme
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(95px, 1fr))', gap: '10px' }}>
                 {THEMES.map((theme) => {
                   const isSelected = formData.theme === theme.id;
                   return (

@@ -1,18 +1,36 @@
 import pytest
 import os
 import sys
+import uuid
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from fastapi.testclient import TestClient
-from server import app, revision_memory
+from server import app, services_for
 
 client = TestClient(app)
 
 def test_revision_sessions_persistence():
-    student_id = "test_student_rev_sessions"
     topic = "Binary Trees"
+    test_username = f"test_user_{uuid.uuid4().hex[:8]}"
+
+    reg_res = client.post("/api/auth/register", json={
+        "username": test_username,
+        "password": "password-123",
+        "name": "Test Student",
+        "level": "College",
+        "study": "CS",
+        "year_of_study": "2nd Year",
+        "learning_goal": "Pass tests"
+    })
+    if reg_res.status_code == 201:
+        student_id = reg_res.json()["account"]["id"]
+    else:
+        login_res = client.post("/api/auth/login", json={"username": "admin", "password": "admin"})
+        student_id = login_res.json()["account"]["id"]
+
+    rev_mem = services_for(student_id).revision_memory
 
     # Clean previous test entries if any
-    revision_memory.delete_sessions_for_topic(student_id, topic)
+    rev_mem.delete_sessions_for_topic(student_id, topic)
 
     # 1. Start revision session 1
     bundle_data = {
@@ -46,14 +64,14 @@ def test_revision_sessions_persistence():
         }
     }
 
-    s1 = revision_memory.save_session(student_id, topic, bundle_data)
+    s1 = rev_mem.save_session(student_id, topic, bundle_data)
     assert s1["title"] == "Revision 1 in Binary Trees"
     assert s1["revision_number"] == 1
     assert "id" in s1
     session_id_1 = s1["id"]
 
     # 2. Start revision session 2
-    s2 = revision_memory.save_session(student_id, topic, bundle_data)
+    s2 = rev_mem.save_session(student_id, topic, bundle_data)
     assert s2["title"] == "Revision 2 in Binary Trees"
     assert s2["revision_number"] == 2
     session_id_2 = s2["id"]
@@ -106,7 +124,7 @@ def test_revision_sessions_persistence():
     assert session_id_1 in remaining_ids
 
     # Clean up test data
-    revision_memory.delete_sessions_for_topic(student_id, topic)
+    rev_mem.delete_sessions_for_topic(student_id, topic)
 
 if __name__ == "__main__":
     test_revision_sessions_persistence()

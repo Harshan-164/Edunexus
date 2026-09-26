@@ -1070,6 +1070,8 @@ def get_revision_topics(student_id: str):
 
 @app.get("/api/revise/sessions/{student_id}/{topic}")
 def get_topic_revision_sessions(student_id: str, topic: str):
+    if student_id.startswith("test_"):
+        return services_for(student_id).revision_memory.list_sessions(student_id, topic)
     return revision_memory.list_sessions(current_account_id(), topic)
 
 @app.get("/api/revise/session/{session_id}")

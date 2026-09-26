@@ -35,10 +35,15 @@ export default function App() {
   // handles a session restored from a backend process started before roles were migrated.
   const isAdmin = account?.role === 'admin' || account?.username?.toLowerCase() === 'admin';
 
+  const [currentTheme, setCurrentTheme] = useState(() => {
+    return localStorage.getItem('nexora:theme') || localStorage.getItem('edunexus:theme') || 'nexus';
+  });
+
   useEffect(() => {
     const theme = studentProfile?.theme || localStorage.getItem('nexora:theme') || localStorage.getItem('edunexus:theme') || 'nexus';
     document.documentElement.dataset.theme = theme;
     localStorage.setItem('nexora:theme', theme);
+    setCurrentTheme(theme);
   }, [studentProfile?.theme]);
 
   useEffect(() => {
@@ -122,6 +127,7 @@ export default function App() {
     const nextTheme = updatedProfile.theme || 'nexus';
     document.documentElement.dataset.theme = nextTheme;
     localStorage.setItem('nexora:theme', nextTheme);
+    setCurrentTheme(nextTheme);
     try {
       const response = await fetch('/api/auth/profile', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
@@ -133,7 +139,27 @@ export default function App() {
     } catch (error) {
       document.documentElement.dataset.theme = previousTheme;
       localStorage.setItem('nexora:theme', previousTheme);
+      setCurrentTheme(previousTheme);
       throw error;
+    }
+  };
+
+  const handleToggleTheme = async () => {
+    const isCurrentlyLight = (document.documentElement.dataset.theme === 'light') || currentTheme === 'light';
+    const nextTheme = isCurrentlyLight ? (localStorage.getItem('nexora:lastDarkTheme') || 'nexus') : 'light';
+    if (!isCurrentlyLight) {
+      localStorage.setItem('nexora:lastDarkTheme', currentTheme && currentTheme !== 'light' ? currentTheme : 'nexus');
+    }
+    document.documentElement.dataset.theme = nextTheme;
+    localStorage.setItem('nexora:theme', nextTheme);
+    setCurrentTheme(nextTheme);
+
+    if (account && studentProfile) {
+      try {
+        await handleSaveStudentProfile({ ...studentProfile, theme: nextTheme });
+      } catch (err) {
+        console.warn('Failed to persist theme preference:', err);
+      }
     }
   };
 
@@ -163,7 +189,17 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <Navbar currentMode={currentMode} setMode={setMode} learnerSummary={learnerSummary} studentProfile={studentProfile} username={account.username} onOpenProfile={openProfileModal} onLogout={handleLogout} />
+      <Navbar
+        currentMode={currentMode}
+        setMode={setMode}
+        learnerSummary={learnerSummary}
+        studentProfile={studentProfile}
+        username={account.username}
+        onOpenProfile={openProfileModal}
+        onLogout={handleLogout}
+        currentTheme={currentTheme}
+        onToggleTheme={handleToggleTheme}
+      />
       <main className="app-main"><div className="page-transition" key={currentMode}>
         {currentMode === 'home' && <Home setMode={setMode} studentId={studentId} studentProfile={studentProfile} learnerSummary={learnerSummary} onOpenProfile={openProfileModal} onSaveProfile={handleSaveStudentProfile} />}
         {currentMode === 'learn' && <Learn studentId={studentId} onRefreshProfile={fetchLearnerSummary} />}

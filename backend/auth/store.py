@@ -313,7 +313,7 @@ class AuthStore:
     @staticmethod
     def _sanitize_profile(profile: Dict[str, Any]) -> Dict[str, Any]:
         theme = str(profile.get("theme", "nexus")).strip().lower()
-        if theme not in {"nexus", "ocean", "violet", "ember"}:
+        if theme not in {"nexus", "ocean", "violet", "ember", "light", "dark"}:
             theme = "nexus"
         return {
             "name": str(profile.get("name", "")).strip()[:100],

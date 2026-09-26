@@ -1,5 +1,5 @@
 import React from 'react';
-import { Award, BookOpen, CheckCircle2, Flame, GraduationCap, Home, LogOut, RefreshCw, Sparkles, TrendingUp, User } from 'lucide-react';
+import { Award, BookOpen, CheckCircle2, Flame, GraduationCap, Home, LogOut, Moon, RefreshCw, Sparkles, Sun, TrendingUp, User } from 'lucide-react';
 
 const NAV_ITEMS = [
   { id: 'home', label: 'Overview', icon: Home },
@@ -17,7 +17,11 @@ export default function Navbar({
   username,
   onOpenProfile,
   onLogout,
+  currentTheme = 'nexus',
+  onToggleTheme,
 }) {
+  const isLight = currentTheme === 'light';
+
   return (
     <header className="site-header">
       <nav className="navbar" aria-label="Primary navigation">
@@ -85,6 +89,19 @@ export default function Navbar({
                 </span>
               )}
             </div>
+          )}
+
+          {/* Quick 1-click Dark/Light Theme Toggle */}
+          {onToggleTheme && (
+            <button
+              type="button"
+              className="theme-toggle-button"
+              onClick={onToggleTheme}
+              title={isLight ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
+              aria-label={isLight ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
+            >
+              {isLight ? <Moon size={16} /> : <Sun size={16} />}
+            </button>
           )}
           
           <button

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  ArrowLeft, BookOpen, CheckCircle2, Clock3, FileText, Layers, Loader2,
+  ArrowLeft, BookOpen, CheckCircle2, Clock3, FileDown, FileText, Layers, Loader2,
   MessageSquare, Paperclip, Play, Plus, Search, Send, Settings2, Sparkles, Trash2, Type, X,
 } from 'lucide-react';
 import FlashcardDeck from '../components/FlashcardDeck';
@@ -336,6 +336,8 @@ export default function Learn({ studentId, onRefreshProfile }) {
   const [checkQuiz, setCheckQuiz] = useState(null);
   const [userAnswers, setUserAnswers] = useState({});
   const [quizResult, setQuizResult] = useState(null);
+  const [generatingCheatsheet, setGeneratingCheatsheet] = useState(false);
+  const [cheatsheetToast, setCheatsheetToast] = useState('');
   const messageEndRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -581,6 +583,47 @@ export default function Learn({ studentId, onRefreshProfile }) {
     onRefreshProfile?.();
   };
 
+  const handleGenerateCheatsheet = async () => {
+    if (!activeSession || !activeSession.messages || activeSession.messages.length === 0) {
+      alert('Please ask a question or explore a concept first before generating a cheatsheet.');
+      return;
+    }
+    setGeneratingCheatsheet(true);
+    try {
+      const response = await fetch(`/api/learn/session/${activeSession.id}/cheatsheet`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          output_language: learnSettings?.output_language || 'auto',
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Could not generate cheatsheet.');
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      const cleanTitle = (activeSession.title || 'lesson').replace(/[^a-zA-Z0-9_-]+/g, '_');
+      link.download = `${cleanTitle}_cheatsheet.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      setCheatsheetToast('Study cheatsheet PDF generated and downloaded!');
+      setTimeout(() => setCheatsheetToast(''), 4000);
+    } catch (err) {
+      console.error('Failed to generate cheatsheet:', err);
+      alert(err.message || 'Failed to generate cheatsheet.');
+    } finally {
+      setGeneratingCheatsheet(false);
+    }
+  };
+
   const filteredSessions = sessions.filter((session) =>
     `${session.title} ${session.description}`.toLowerCase().includes(sessionSearch.toLowerCase())
   );
@@ -627,6 +670,20 @@ export default function Learn({ studentId, onRefreshProfile }) {
               <button className="icon-button sidebar-toggle" onClick={() => setSidebarOpen(true)} aria-label="Show chats"><ArrowLeft size={18} /></button>
               <div className="chat-heading"><span>Lesson</span><h2>{activeSession.title}</h2><p>{activeSession.description}</p></div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button
+                  className="knowledge-button cheatsheet-btn"
+                  onClick={handleGenerateCheatsheet}
+                  disabled={generatingCheatsheet || !activeSession.messages || activeSession.messages.length === 0}
+                  title={!activeSession.messages || activeSession.messages.length === 0 ? "Discuss a topic first to generate a cheatsheet" : "Generate and download a PDF cheatsheet of this chat discussion"}
+                  style={{
+                    background: 'linear-gradient(135deg, rgba(14, 165, 233, 0.18), rgba(99, 102, 241, 0.22))',
+                    border: '1px solid rgba(14, 165, 233, 0.45)',
+                    color: '#38bdf8'
+                  }}
+                >
+                  {generatingCheatsheet ? <Loader2 size={16} className="spin" /> : <FileDown size={16} />}
+                  <span>{generatingCheatsheet ? 'Generating…' : 'Generate Cheatsheet'}</span>
+                </button>
                 <button className="icon-button learn-header-settings" onClick={openSettings} title="Learn settings" aria-label="Open Learn settings"><Settings2 size={17} /></button>
                 <button className="knowledge-button" onClick={checkUnderstanding} disabled={sending}><Sparkles size={16} /><span>Check understanding</span></button>
                 <button className="icon-button chat-delete-button" onClick={(e) => deleteSession(activeSession.id, e)} title="Delete this chat" aria-label="Delete this chat"><Trash2 size={16} /></button>
@@ -722,6 +779,29 @@ export default function Learn({ studentId, onRefreshProfile }) {
             <label><span>Short description</span><textarea rows="3" maxLength="500" value={newLesson.description} onChange={(event) => setNewLesson((previous) => ({ ...previous, description: event.target.value }))} placeholder="What do you want to understand or accomplish?" required /></label>
             <div className="create-chat-actions"><button type="button" className="btn-secondary" onClick={() => setShowCreate(false)}>Cancel</button><button className="btn-primary" disabled={creating || !newLesson.title.trim() || !newLesson.description.trim()}>{creating ? <><Loader2 className="spin" size={16} /> Creating…</> : <>Create chat <Plus size={16} /></>}</button></div>
           </form>
+        </div>
+      )}
+
+      {cheatsheetToast && (
+        <div style={{
+          position: 'fixed',
+          bottom: '24px',
+          right: '24px',
+          background: 'linear-gradient(135deg, #091524 0%, #0d2847 100%)',
+          border: '1px solid rgba(45, 212, 191, 0.5)',
+          color: '#5eead4',
+          padding: '12px 20px',
+          borderRadius: '10px',
+          boxShadow: '0 10px 30px rgba(0, 0, 0, 0.6)',
+          zIndex: 9999,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          fontSize: '0.88rem',
+          fontWeight: 650
+        }}>
+          <CheckCircle2 size={18} color="#2dd4bf" />
+          <span>{cheatsheetToast}</span>
         </div>
       )}
     </div>

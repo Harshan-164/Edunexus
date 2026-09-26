@@ -1,11 +1,12 @@
 import os
+import re
 import uuid
 import datetime
 import logging
 import json
 import time
 from typing import Dict, Any, List, Optional
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request, status
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, FileResponse
@@ -32,6 +33,7 @@ from backend.media.image_search import enrich_flashcards_with_images
 from backend.learning.preferences import build_learn_preference_prompt
 from backend.learning.languages import build_language_prompt, normalize_output_language
 from backend.learning.rewards import compute_student_rewards
+from backend.learning.cheatsheet import build_cheatsheet_pdf, extract_cheatsheet_data
 from backend.graph.workflow import create_workflow, is_answer_correct
 from backend.agents.diagnostic import DiagnosticAgent, DiagnosisAgent, DiagnosticAndDiagnosisAgent
 from backend.agents.remediation import RemediationAgent
@@ -580,6 +582,47 @@ def get_chat_session(session_id: str):
     if not session:
         raise HTTPException(status_code=404, detail="Chat session not found.")
     return session
+
+@app.post("/api/learn/session/{session_id}/cheatsheet")
+async def generate_session_cheatsheet(session_id: str, request: Request):
+    session = chat_memory.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Chat session not found.")
+    
+    messages = session.get("messages", [])
+    if not messages:
+        raise HTTPException(status_code=400, detail="Cannot generate cheatsheet: no chat discussion found in this session yet.")
+    
+    topic = session.get("title", "Lesson")
+    description = session.get("description", "")
+    
+    output_language = "auto"
+    try:
+        body = await request.json()
+        if isinstance(body, dict) and body.get("output_language"):
+            output_language = body["output_language"]
+    except Exception:
+        pass
+    
+    pdf_bytes = build_cheatsheet_pdf(
+        topic=topic,
+        description=description,
+        messages=messages,
+        llm=llm,
+        output_language=output_language,
+    )
+    
+    safe_topic = re.sub(r"[^a-zA-Z0-9_-]+", "_", topic).strip("_") or "lesson"
+    filename = f"{safe_topic}_cheatsheet.pdf"
+    
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Access-Control-Expose-Headers": "Content-Disposition",
+        },
+    )
 
 @app.delete("/api/learn/session/{session_id}")
 def delete_chat_session(session_id: str):

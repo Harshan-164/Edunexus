@@ -1,6 +1,6 @@
-import os
 import json
 from pydantic import ValidationError
+from backend.agents.llm_utils import create_chat_completion
 from backend.models.schemas import AdaptiveStrategyResponse
 
 class AdaptiveStrategyAgent:
@@ -66,11 +66,9 @@ class AdaptiveStrategyAgent:
             
         user_prompt += f"CURRENT REMEDIATION CYCLE: {remediation_cycle}\n"
 
-        model_name = os.environ.get("NVIDIA_MODEL", "nvidia/nemotron-3-ultra-550b-a55b")
-
         try:
-            response = self.llm.chat.completions.create(
-                model=model_name,
+            response = create_chat_completion(
+                self.llm,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
@@ -80,7 +78,7 @@ class AdaptiveStrategyAgent:
                 stream=False
             )
         except Exception as e:
-            raise RuntimeError(f"NVIDIA API failure: {e}")
+            raise RuntimeError(f"LLM provider failure: {e}")
 
         try:
             content = response.choices[0].message.content

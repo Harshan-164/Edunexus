@@ -55,6 +55,7 @@ class ChatMemory:
                     content_type TEXT NOT NULL DEFAULT 'text',
                     content_data TEXT,
                     is_grounded INTEGER NOT NULL DEFAULT 0,
+                    source_document TEXT,
                     created_at TEXT NOT NULL,
                     FOREIGN KEY(session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
                 );
@@ -85,6 +86,8 @@ class ChatMemory:
                 connection.execute("ALTER TABLE chat_messages ADD COLUMN content_type TEXT NOT NULL DEFAULT 'text'")
             if "content_data" not in message_columns:
                 connection.execute("ALTER TABLE chat_messages ADD COLUMN content_data TEXT")
+            if "source_document" not in message_columns:
+                connection.execute("ALTER TABLE chat_messages ADD COLUMN source_document TEXT")
 
     @staticmethod
     def _now() -> str:
@@ -124,6 +127,7 @@ class ChatMemory:
             "content_type": row["content_type"] or "text",
             "content_data": content_data,
             "is_grounded": bool(row["is_grounded"]),
+            "source_document": row["source_document"] if "source_document" in row.keys() else None,
             "created_at": row["created_at"],
         }
 
@@ -203,6 +207,7 @@ class ChatMemory:
         is_grounded: bool = False,
         content_type: str = "text",
         content_data: Optional[Dict[str, Any]] = None,
+        source_document: Optional[str] = None,
     ) -> Dict[str, Any]:
         message_id = str(uuid.uuid4())
         now = self._now()
@@ -210,8 +215,8 @@ class ChatMemory:
         serialized_content = json.dumps(content_data) if content_data else None
         with self._connect() as connection:
             connection.execute(
-                "INSERT INTO chat_messages (id, session_id, sender, text, visualization, content_type, content_data, is_grounded, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (message_id, session_id, sender, text, serialized_visualization, content_type, serialized_content, int(is_grounded), now),
+                "INSERT INTO chat_messages (id, session_id, sender, text, visualization, content_type, content_data, is_grounded, source_document, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (message_id, session_id, sender, text, serialized_visualization, content_type, serialized_content, int(is_grounded), source_document, now),
             )
             connection.execute("UPDATE chat_sessions SET updated_at = ? WHERE id = ?", (now, session_id))
             row = connection.execute("SELECT * FROM chat_messages WHERE id = ?", (message_id,)).fetchone()
@@ -284,17 +289,24 @@ class ChatMemory:
                     except OSError:
                         pass
             media_rows = connection.execute(
-                "SELECT content_data FROM chat_messages WHERE session_id = ? AND content_type = 'video'",
+                "SELECT content_data, content_type FROM chat_messages WHERE session_id = ? AND content_type IN ('video', 'flashcards')",
                 (session_id,),
             ).fetchall()
             generated_dir = os.path.join(os.path.dirname(self.db_path), "generated")
             for media_row in media_rows:
                 try:
                     media_data = json.loads(media_row["content_data"] or "{}")
-                    media_name = os.path.basename(media_data.get("media_url", ""))
-                    media_path = os.path.join(generated_dir, media_name)
-                    if media_name and os.path.isfile(media_path):
-                        os.remove(media_path)
+                    media_urls = [media_data.get("media_url", "")]
+                    media_urls.extend(
+                        card.get("image", {}).get("url", "")
+                        for card in media_data.get("cards", [])
+                        if isinstance(card, dict) and isinstance(card.get("image"), dict)
+                    )
+                    for media_url in media_urls:
+                        media_name = os.path.basename(media_url)
+                        media_path = os.path.join(generated_dir, media_name)
+                        if media_name and os.path.isfile(media_path):
+                            os.remove(media_path)
                 except (json.JSONDecodeError, OSError):
                     pass
             cursor = connection.execute("DELETE FROM chat_sessions WHERE id = ?", (session_id,))

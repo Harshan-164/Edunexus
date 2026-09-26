@@ -1,7 +1,7 @@
-import os
 import json
 from typing import List, Optional
 from pydantic import ValidationError
+from backend.agents.llm_utils import create_chat_completion
 from backend.models.schemas import VerificationQuestion, VerificationResponse
 
 class VerificationAgent:
@@ -91,11 +91,9 @@ class VerificationAgent:
             f"PREVIOUS QUESTIONS ASKED:\n{json.dumps(previous_question_ids)}\n"
         )
 
-        model_name = os.environ.get("NVIDIA_MODEL", "nvidia/nemotron-3-ultra-550b-a55b")
-
         try:
-            response = self.llm.chat.completions.create(
-                model=model_name,
+            response = create_chat_completion(
+                self.llm,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
@@ -105,7 +103,7 @@ class VerificationAgent:
                 stream=False
             )
         except Exception as e:
-            raise RuntimeError(f"NVIDIA API failure during verification generation: {e}")
+            raise RuntimeError(f"LLM provider failure during verification generation: {e}")
 
         try:
             content = response.choices[0].message.content
@@ -122,4 +120,3 @@ class VerificationAgent:
             raise ValueError(f"LLM output does not match the required schema: {e}\nContent was: {content}")
         except Exception as e:
             raise RuntimeError(f"An unexpected error occurred while parsing output: {e}")
-

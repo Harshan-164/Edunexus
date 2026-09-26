@@ -1,7 +1,7 @@
-import os
 import json
 from typing import Optional, List
 from pydantic import ValidationError
+from backend.agents.llm_utils import create_chat_completion
 from backend.models.schemas import DiagnosticResponse, DiagnosisResponse
 from backend.tools.agent_tools import search_syllabus_rag, get_student_progress
 
@@ -69,11 +69,9 @@ class DiagnosticAndDiagnosisAgent:
         if learner_context:
             user_prompt += f"\nSTUDENT DB PROGRESS:\n{learner_context}\n"
 
-        model_name = os.environ.get("NVIDIA_MODEL", "nvidia/nemotron-3-ultra-550b-a55b")
-
         try:
-            response = self.llm.chat.completions.create(
-                model=model_name,
+            response = create_chat_completion(
+                self.llm,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
@@ -83,7 +81,7 @@ class DiagnosticAndDiagnosisAgent:
                 stream=False
             )
         except Exception as e:
-            raise RuntimeError(f"NVIDIA API failure: {e}")
+            raise RuntimeError(f"LLM provider failure: {e}")
 
         try:
             content = response.choices[0].message.content
@@ -163,11 +161,9 @@ class DiagnosticAndDiagnosisAgent:
             user_prompt += f"  Correct Answer: {res.get('correct_answer')}\n"
             user_prompt += f"  Result: {status}\n\n"
 
-        model_name = os.environ.get("NVIDIA_MODEL", "nvidia/nemotron-3-ultra-550b-a55b")
-
         try:
-            response = self.llm.chat.completions.create(
-                model=model_name,
+            response = create_chat_completion(
+                self.llm,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
@@ -177,7 +173,7 @@ class DiagnosticAndDiagnosisAgent:
                 stream=False
             )
         except Exception as e:
-            raise RuntimeError(f"NVIDIA API failure: {e}")
+            raise RuntimeError(f"LLM provider failure: {e}")
 
         try:
             content = response.choices[0].message.content
@@ -222,6 +218,3 @@ class DiagnosticAndDiagnosisAgent:
 
 DiagnosticAgent = DiagnosticAndDiagnosisAgent
 DiagnosisAgent = DiagnosticAndDiagnosisAgent
-
-
-

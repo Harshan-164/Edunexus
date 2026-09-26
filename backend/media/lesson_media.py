@@ -59,6 +59,7 @@ def normalize_flashcards(data: Dict[str, Any], topic: str) -> Dict[str, Any]:
             "prompt": str(card.get("prompt") or "Tap to reveal the key points")[:160],
             "accent": accent,
             "blocks": blocks,
+            "image_query": str(card.get("image_query") or card.get("title") or topic)[:180],
             "visual": {
                 "type": visual_type,
                 "title": str(visual.get("title") or "")[:80],
@@ -71,7 +72,7 @@ def normalize_flashcards(data: Dict[str, Any], topic: str) -> Dict[str, Any]:
         cards = [{
             "id": "card-1", "title": topic, "summary": "Core concept",
             "points": ["Review the concept", "Connect it to an example", "Check your understanding"],
-            "prompt": "Tap to reveal", "visual": {"type": "none", "title": "", "labels": [], "values": [], "steps": []},
+            "prompt": "Tap to reveal", "image_query": topic, "visual": {"type": "none", "title": "", "labels": [], "values": [], "steps": []},
             "accent": "cyan", "blocks": [{"label": "Try it", "content": "Connect this idea to a concrete example.", "kind": "example"}],
         }]
     return {"title": str(data.get("title") or topic)[:120], "cards": cards}

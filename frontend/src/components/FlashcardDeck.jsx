@@ -124,6 +124,12 @@ export default function FlashcardDeck({ data }) {
         <div className="flashcard-side flashcard-front">
           <small>Concept {index + 1}</small>
           <strong>{card.title}</strong>
+          {card.image?.url && (
+            <figure className="flashcard-image" onClick={(event) => event.stopPropagation()}>
+              <img src={card.image.url} alt={card.image.alt || card.title} loading="lazy" />
+              <figcaption>{card.image.title || card.title} · <a href={card.image.source_url} target="_blank" rel="noreferrer">{card.image.attribution} ({card.image.license})</a></figcaption>
+            </figure>
+          )}
           <p>{card.prompt || card.summary}</p>
           <em>Click to reveal key points</em>
         </div>

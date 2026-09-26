@@ -29,6 +29,8 @@ from backend.services.email_service import send_study_reminder
 from backend.media.lesson_media import normalize_flashcards, normalize_storyboard, parse_json_response, render_animated_lesson
 from backend.media.image_search import enrich_flashcards_with_images
 from backend.learning.preferences import build_learn_preference_prompt
+from backend.learning.languages import build_language_prompt, normalize_output_language
+from backend.learning.rewards import compute_student_rewards
 from backend.graph.workflow import create_workflow, is_answer_correct
 from backend.agents.diagnostic import DiagnosticAgent, DiagnosisAgent, DiagnosticAndDiagnosisAgent
 from backend.agents.remediation import RemediationAgent
@@ -39,9 +41,9 @@ from backend.agents.test_agent import TestAgent
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("EDUNEXUS-SERVER")
+logger = logging.getLogger("NEXORA-SERVER")
 
-app = FastAPI(title="EDUNEXUS Adaptive Mastery Engine", version="2.0.0")
+app = FastAPI(title="NEXORA Adaptive Mastery Engine", version="2.0.0")
 
 # Enable CORS for React frontend
 app.add_middleware(
@@ -62,7 +64,7 @@ from openai import OpenAI
 
 
 class LLMWrapper:
-    """Routes synchronous app calls across OpenRouter and NVIDIA NIM."""
+    """Routes synchronous app calls across pinned NVIDIA NIM models."""
 
     def __init__(self, routes):
         self.routes = routes
@@ -118,25 +120,6 @@ class LLMWrapper:
 
 def get_llm():
     routes = []
-    openrouter_key = (os.getenv("OPENROUTER_API_KEY") or "").strip()
-    if openrouter_key:
-        openrouter_models = [os.getenv("OPENROUTER_MODEL", "openai/gpt-5.6-luna")]
-        openrouter_models.extend(model.strip() for model in os.getenv("OPENROUTER_FALLBACK_MODELS", "").split(",") if model.strip())
-        routes.append({
-            "name": "OpenRouter",
-            "client": OpenAI(
-                base_url=os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
-                api_key=openrouter_key,
-                default_headers={
-                    "HTTP-Referer": os.getenv("OPENROUTER_SITE_URL", "http://localhost:5173"),
-                    "X-OpenRouter-Title": os.getenv("OPENROUTER_APP_NAME", "EduNexus"),
-                },
-                max_retries=1,
-                timeout=60.0,
-            ),
-            "models": openrouter_models,
-        })
-
     nvidia_key = (os.getenv("NVIDIA_API_KEY") or "").strip()
     if nvidia_key:
         nvidia_model = os.getenv("NVIDIA_MODEL", "nvidia/nemotron-3-ultra-550b-a55b")
@@ -150,8 +133,13 @@ def get_llm():
     if not routes:
         routes.append({
             "name": "Unconfigured",
-            "client": OpenAI(api_key=os.getenv("OPENAI_API_KEY", "missing-api-key"), max_retries=0, timeout=60.0),
-            "models": [os.getenv("OPENAI_MODEL", "gpt-4o-mini")],
+            "client": OpenAI(
+                base_url="https://integrate.api.nvidia.com/v1",
+                api_key="missing-nvidia-api-key",
+                max_retries=0,
+                timeout=60.0,
+            ),
+            "models": [os.getenv("NVIDIA_MODEL", "nvidia/nemotron-3-super-120b-a12b")],
         })
     return LLMWrapper(routes)
 
@@ -180,7 +168,7 @@ async def authenticated_user_scope(request: Request, call_next):
     requires_auth = path.startswith("/api/") and path not in public_paths and request.method != "OPTIONS"
     account = None
     if requires_auth:
-        session_token = request.cookies.get("edunexus_session")
+        session_token = request.cookies.get("nexora_session") or request.cookies.get("edunexus_session")
         authorization = request.headers.get("Authorization", "")
         if not session_token and authorization.lower().startswith("bearer "):
             session_token = authorization[7:].strip()
@@ -201,12 +189,13 @@ def read_root():
     index_file = os.path.join(STATIC_DIR, "index.html")
     if os.path.exists(index_file):
         return FileResponse(index_file)
-    return {"message": "EDUNEXUS API running."}
+    return {"message": "NEXORA API running."}
 
 # -------------------------------------------------------------------
 # PYDANTIC SCHEMAS
 # -------------------------------------------------------------------
 class LearnPreferences(BaseModel):
+    output_language: str = "auto"
     chat_style: str = "auto"
     chat_custom_instruction: str = ""
     animation_style: str = "auto"
@@ -238,6 +227,17 @@ class ProfileUpdateRequest(BaseModel):
     profile: Dict[str, Any]
 
 
+class ActivityHeartbeatRequest(BaseModel):
+    seconds: int = 60
+
+
+class TeacherReminderRequest(BaseModel):
+    student_id: str
+    action_type: str
+    title: str = "A note from your teacher"
+    message: str
+
+
 class LearnChatRequest(BaseModel):
     student_id: str = "student_1"
     topic: str
@@ -266,10 +266,12 @@ class CheckUnderstandingRequest(BaseModel):
     student_id: str = "student_1"
     topic: str
     document_name: Optional[str] = None
+    output_language: str = "auto"
 
 class ReviseStartRequest(BaseModel):
     student_id: str = "student_1"
     topic: str
+    output_language: str = "auto"
 
 class ReviseVerifyRequest(BaseModel):
     student_id: str = "student_1"
@@ -277,6 +279,7 @@ class ReviseVerifyRequest(BaseModel):
     answers: Dict[str, str]
     questions: List[Dict[str, Any]]
     session_id: Optional[str] = None
+    output_language: str = "auto"
 
 class TestStartRequest(BaseModel):
     student_id: str = "student_1"
@@ -286,6 +289,7 @@ class TestStartRequest(BaseModel):
     question_count: int = 5  # min 5, max 25
     custom_questions: Optional[List[Dict[str, Any]]] = None
     loop_round: int = 1
+    output_language: str = "auto"
 
 class TestSubmitRequest(BaseModel):
     student_id: str = "student_1"
@@ -303,6 +307,16 @@ class TestReviewRequest(BaseModel):
     review_mode: str = "text"  # 'text' or 'flashcards'
     failed_results: List[Dict[str, Any]]
     timings: Optional[Dict[str, float]] = None
+    output_language: str = "auto"
+
+
+class ProgressGenerateRequest(BaseModel):
+    output_language: str = "auto"
+
+
+class ProgressTranslateRequest(BaseModel):
+    output_language: str = "auto"
+    strings: List[str]
 
 class ScheduleCreateRequest(BaseModel):
     student_id: str = "student_1"
@@ -341,13 +355,13 @@ def generate_safe_visualization(topic: str, text: str = "") -> Optional[Dict[str
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "app": "EDUNEXUS Mastery Engine", "llm_provider": llm.provider_name, "llm_model": llm.model_name}
+    return {"status": "ok", "app": "NEXORA Mastery Engine", "llm_provider": llm.provider_name, "llm_model": llm.model_name}
 
 
 def _authenticated_response(account: Dict[str, Any], session_token: str, status_code: int = 200):
     response = JSONResponse(status_code=status_code, content={"account": account})
     response.set_cookie(
-        "edunexus_session",
+        "nexora_session",
         session_token,
         max_age=30 * 24 * 60 * 60,
         httponly=True,
@@ -415,10 +429,28 @@ def update_authenticated_profile(req: ProfileUpdateRequest):
 
 @app.post("/api/auth/logout")
 def logout_account(request: Request):
-    auth_store.delete_session(request.cookies.get("edunexus_session", ""))
+    auth_store.delete_session(request.cookies.get("nexora_session") or request.cookies.get("edunexus_session", ""))
     response = JSONResponse(content={"status": "success"})
+    response.delete_cookie("nexora_session", path="/")
     response.delete_cookie("edunexus_session", path="/")
     return response
+
+
+@app.post("/api/activity/heartbeat")
+def activity_heartbeat(req: ActivityHeartbeatRequest):
+    return auth_store.record_activity(current_account_id(), req.seconds)
+
+
+@app.get("/api/notifications")
+def get_notifications(unread_only: bool = False):
+    return {"notifications": auth_store.list_notifications(current_account_id(), unread_only=unread_only)}
+
+
+@app.post("/api/notifications/{notification_id}/read")
+def read_notification(notification_id: str):
+    if not auth_store.mark_notification_read(notification_id, current_account_id()):
+        raise HTTPException(status_code=404, detail="Notification not found.")
+    return {"status": "success"}
 
 
 def _require_admin() -> Dict[str, Any]:
@@ -434,6 +466,18 @@ def get_admin_overview():
     return build_admin_overview(auth_store.list_accounts(role="student"), services_for)
 
 
+@app.post("/api/admin/reminders", status_code=status.HTTP_201_CREATED)
+def create_admin_reminder(req: TeacherReminderRequest):
+    admin = _require_admin()
+    try:
+        notification = auth_store.create_notification(
+            req.student_id, req.action_type, req.title, req.message, admin["id"]
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"notification": notification}
+
+
 @app.get("/api/admin/students/{account_id}")
 def get_admin_student(account_id: str):
     _require_admin()
@@ -444,7 +488,20 @@ def get_admin_student(account_id: str):
 
 @app.get("/api/learner/{student_id}")
 def get_learner_profile(student_id: str):
-    return learner_memory.get_learner_summary(current_account_id())
+    aid = current_account_id()
+    account = auth_store.get_account(aid)
+    services = current_services()
+    summary = services.learner_memory.get_learner_summary(aid)
+    rewards = compute_student_rewards(aid, services, account)
+    summary["rewards"] = rewards
+    summary["streaks"] = rewards.get("streaks", {})
+    return summary
+
+@app.get("/api/learner/{student_id}/rewards")
+def get_learner_rewards(student_id: str):
+    aid = current_account_id()
+    account = auth_store.get_account(aid)
+    return compute_student_rewards(aid, current_services(), account)
 
 @app.get("/api/learn/sessions/{student_id}")
 def list_chat_sessions(student_id: str):
@@ -671,7 +728,7 @@ async def learn_chat(req: LearnChatRequest):
 
     if is_grounded:
         knowledge_prompt = (
-            f"You are the EduNexus AI tutor. Continue the lesson naturally and maintain conversational flow using the chat history.\n"
+            f"You are the Nexora AI tutor. Continue the lesson naturally and maintain conversational flow using the chat history.\n"
             f"{session_context}{history_context}"
             f"Reference Material from Uploaded Document:\n{grounded_context}\n\n"
             f"Student Question: {req.message}\n\n"
@@ -679,7 +736,7 @@ async def learn_chat(req: LearnChatRequest):
         )
     else:
         knowledge_prompt = (
-            f"You are the EduNexus AI tutor. Answer the student's current question directly using general knowledge. "
+            f"You are the Nexora AI tutor. Answer the student's current question directly using general knowledge. "
             f"Use prior turns only when they are relevant to the current question.\n"
             f"{session_context}{history_context}"
             f"Student Question: {req.message}\n\n"
@@ -823,7 +880,8 @@ async def check_understanding(req: CheckUnderstandingRequest):
     try:
         diag = diagnostic_agent.generate_diagnostic(
             topic=req.topic,
-            source_context=context if context else f"General computer science topic: {req.topic}"
+            source_context=context if context else f"General computer science topic: {req.topic}",
+            output_language=req.output_language
         )
         # Take 2 questions for quick check
         questions = [q.model_dump() for q in diag.questions[:2]]
@@ -951,7 +1009,8 @@ async def start_revision(req: ReviseStartRequest):
         quiz_history=quiz_history,
         misconceptions=misconceptions,
         masteries=masteries,
-        learner_context_str=context_str
+        learner_context_str=context_str,
+        output_language=req.output_language,
     )
     
     # Save the generated revision text, flashcards, and quiz entirely
@@ -1018,14 +1077,16 @@ async def verify_revision(req: ReviseVerifyRequest):
             misconception=f"Failed revision check on {sub_concept}. Student selected: '{failed_q['user_answer']}'",
             student_answer=failed_q['user_answer'],
             correct_answer=failed_q['correct_answer'],
-            source_context=failed_q.get('explanation', '')
+            source_context=failed_q.get('explanation', ''),
+            output_language=req.output_language,
         )
         
         ver_q = verification_agent.generate_verification_question(
             topic=req.topic,
             sub_concept=sub_concept,
             misconception=rem_res.misconception,
-            strategy=rem_res.remediation_strategy
+            strategy=rem_res.remediation_strategy,
+            output_language=req.output_language,
         )
         
         response_payload = {
@@ -1086,7 +1147,8 @@ async def start_test(req: TestStartRequest):
         questions = test_agent.generate_quiz(
             topic=req.topic,
             question_count=count,
-            doc_context=doc_context
+            doc_context=doc_context,
+            output_language=req.output_language,
         )
     else:
         # Studied concept: Cross-reference chat history, revision sessions, and past test performance
@@ -1099,7 +1161,8 @@ async def start_test(req: TestStartRequest):
             question_count=count,
             chat_messages=chat_messages,
             revision_sessions=rev_sessions,
-            past_quiz_history=past_quiz
+            past_quiz_history=past_quiz,
+            output_language=req.output_language,
         )
 
     attempt_id = f"att_{uuid.uuid4().hex[:8]}"
@@ -1235,7 +1298,8 @@ async def review_test_remediation(req: TestReviewRequest):
         topic=req.topic,
         failed_results=req.failed_results,
         review_mode=req.review_mode,
-        timings=req.timings
+        timings=req.timings,
+        output_language=req.output_language
     )
 
     if req.session_id:
@@ -1351,8 +1415,8 @@ def get_email_status():
 def test_email_delivery(req: EmailTestRequest):
     res = send_study_reminder(
         to_email=req.recipient_email,
-        student_name="EduNexus Learner",
-        topic="EduNexus Email Verification Test",
+        student_name="Nexora Learner",
+        topic="Nexora Email Verification Test",
         mode="test",
         date=datetime.date.today().isoformat(),
         time_slots=["Right Now"],
@@ -1401,7 +1465,129 @@ def configure_email_settings(req: EmailConfigRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save SMTP settings: {e}")
 
-def _generate_student_report_data(student_id: str) -> Dict[str, Any]:
+def _generate_progress_ai_bundle(
+    *,
+    student_id: str,
+    output_language: str,
+    topic_names: List[str],
+    mastered_count: int,
+    test_count: int,
+    average_score: int,
+    revision_count: int,
+    misconception_count: int,
+    strings: List[str],
+    fallback_feedback: str,
+) -> Dict[str, Any]:
+    """Generate diagnostics and all localization in exactly one NIM request."""
+    language = normalize_output_language(output_language)
+    originals = [str(value).strip()[:600] for value in strings[:180]]
+    indexed = [{"id": index, "text": value} for index, value in enumerate(originals)]
+    prompt = (
+        "You are the Nexora Cognitive Diagnostic and Progress Localization AI.\n"
+        f"{build_language_prompt(language)}\n"
+        "Using the learner data below, create an insightful progress summary covering retention, specific strengths, "
+        "priority weak points, and actionable next steps. Also translate every indexed learner-facing UI "
+        "string into the same output language. Preserve names, email addresses, dates, times, numbers, percentages, "
+        "emojis, product names, and proper-noun topic names. Do not omit or summarize indexed strings.\n\n"
+        f"Student: {student_id}\n"
+        f"Studied topics: {', '.join(topic_names) if topic_names else 'None yet'}\n"
+        f"Mastered topics: {mastered_count}/{len(topic_names)}\n"
+        f"Tests: {test_count}; average score: {average_score}%\n"
+        f"Revisions: {revision_count}; active misconceptions: {misconception_count}\n\n"
+        "Return ONLY valid JSON with this exact shape:\n"
+        '{"feedback":"2-3 short diagnostic paragraphs","summary":{"headline":"short personalized headline",'
+        '"overview":"2-3 sentence overview","strengths":["specific strength"],'
+        '"focus_areas":["specific area to improve"],"next_steps":["concrete next action"]},'
+        '"translations":[{"id":0,"text":"translated text"}]}\n'
+        "Provide 2-4 concise items in each summary list. Do not invent scores or learning activity. "
+        "Return exactly one translation for every input id.\n\n"
+        f"INDEXED STRINGS:\n{json.dumps(indexed, ensure_ascii=False)}"
+    )
+    try:
+        primary_route = llm.routes[0]
+        one_shot_client = primary_route["client"].with_options(max_retries=0, timeout=60.0)
+        response = one_shot_client.chat.completions.create(
+            model=primary_route["models"][0],
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=12288,
+            stream=False,
+        )
+        parsed = parse_json_response(response.choices[0].message.content or "")
+        items = parsed.get("translations") or []
+        by_id = {
+            int(item["id"]): str(item.get("text") or originals[int(item["id"])])
+            for item in items
+            if isinstance(item, dict) and str(item.get("id", "")).isdigit() and int(item["id"]) < len(originals)
+        }
+        summary = parsed.get("summary") if isinstance(parsed.get("summary"), dict) else {}
+        return {
+            "feedback": str(parsed.get("feedback") or fallback_feedback),
+            "summary": {
+                "headline": str(summary.get("headline") or "Your learning progress at a glance"),
+                "overview": str(summary.get("overview") or parsed.get("feedback") or fallback_feedback),
+                "strengths": [str(item) for item in (summary.get("strengths") or [])[:4]],
+                "focus_areas": [str(item) for item in (summary.get("focus_areas") or [])[:4]],
+                "next_steps": [str(item) for item in (summary.get("next_steps") or [])[:4]],
+            },
+            "translations": [by_id.get(index, original) for index, original in enumerate(originals)],
+        }
+    except Exception as exc:
+        logger.warning("Single-request Progress AI fallback: %s", exc)
+        return {
+            "feedback": fallback_feedback,
+            "summary": {
+                "headline": "Your learning progress at a glance",
+                "overview": fallback_feedback,
+                "strengths": [],
+                "focus_areas": [],
+                "next_steps": [],
+            },
+            "translations": originals,
+        }
+
+
+def _translate_progress_ui_once(strings: List[str], output_language: str) -> List[str]:
+    """Run one bounded NIM translation request after report generation."""
+    language = normalize_output_language(output_language)
+    originals = [str(value).strip()[:600] for value in strings[:120]]
+    if language in {"auto", "english"} or not originals:
+        return originals
+    indexed = [{"id": index, "text": value} for index, value in enumerate(originals)]
+    prompt = (
+        "Translate every indexed Progress-dashboard UI string into the requested language.\n"
+        f"{build_language_prompt(language)}\n"
+        "Preserve names, email addresses, dates, times, numbers, percentages, emojis, product names, and proper-noun "
+        "topic names. Do not omit or summarize strings. Return ONLY valid JSON in this exact shape: "
+        '{"translations":[{"id":0,"text":"translated text"}]}. '
+        "Return one item for every input id.\n\n"
+        f"INDEXED STRINGS:\n{json.dumps(indexed, ensure_ascii=False)}"
+    )
+    try:
+        primary_route = llm.routes[0]
+        one_shot_client = primary_route["client"].with_options(max_retries=0, timeout=45.0)
+        response = one_shot_client.chat.completions.create(
+            model=primary_route["models"][0],
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=8192,
+            stream=False,
+        )
+        parsed = parse_json_response(response.choices[0].message.content or "")
+        items = parsed.get("translations") or []
+        by_id = {
+            int(item["id"]): str(item.get("text") or originals[int(item["id"])])
+            for item in items
+            if isinstance(item, dict) and str(item.get("id", "")).isdigit() and int(item["id"]) < len(originals)
+        }
+        return [by_id.get(index, original) for index, original in enumerate(originals)]
+    except Exception as exc:
+        logger.warning("Delayed Progress UI translation fallback: %s", exc)
+        return originals
+
+
+def _generate_student_report_data(
+    student_id: str,
+    output_language: str = "auto",
+) -> Dict[str, Any]:
     # 1. Learnt topics from chat_memory
     chat_sessions = chat_memory.list_sessions(student_id)
     learnt_map: Dict[str, Any] = {}
@@ -1555,31 +1741,17 @@ def _generate_student_report_data(student_id: str) -> Dict[str, Any]:
     avg_accuracy_pct = round(avg_accuracy * 100) if avg_accuracy <= 1.0 else round(avg_accuracy)
     mastered_topics_count = sum(1 for tb in topics_breakdown if tb["status"] == "MASTERED")
 
-    # Generate Cognitive Feedback
+    # Deterministic fallback; the single AI request below replaces this with a
+    # selected-language cognitive diagnostic when NIM is available.
     if not all_topic_names:
-        feedback = "Welcome to EduNexus! You haven't started any study sessions yet. Begin by exploring your syllabus in the Learn tab or uploading course materials."
+        feedback = "Welcome to Nexora! You haven't started any study sessions yet. Begin by exploring your syllabus in the Learn tab or uploading course materials."
     else:
-        # Prompt LLM for high-value diagnostic synthesis
-        prompt = (
-            f"You are the EduNexus Cognitive Diagnostic AI. Analyze the learner's data and write a concise, encouraging 3-part diagnostic summary:\n"
-            f"- Student: {student_id}\n"
-            f"- Studied Topics: {', '.join(all_topic_names)}\n"
-            f"- Mastered Topics ({mastered_topics_count}/{len(all_topic_names)})\n"
-            f"- Total Tests Attempted: {len(test_sessions)}, Average Score: {avg_accuracy_pct}%\n"
-            f"- Revisions Completed: {sum(r['revisions_count'] for r in rev_map.values())}\n"
-            f"- Active Misconceptions Count: {len(active_misc_list)}\n\n"
-            f"Write 2-3 concise paragraphs covering: 1) Overall retention and momentum, 2) Specific cognitive strengths and weak points needing reinforcement, 3) Actionable next steps (e.g. flashcard revision or diagnostic test)."
-        )
-        try:
-            feedback = llm.invoke(prompt).strip()
-        except Exception as e:
-            logger.warning("LLM feedback generation fallback: %s", e)
-            if avg_accuracy_pct >= 80:
-                feedback = f"Outstanding performance! You have mastered {mastered_topics_count} topic(s) with an average diagnostic score of {avg_accuracy_pct}%. Your recall patterns are exceptionally stable. Continue consistent spaced revisions to lock in conceptual depth."
-            elif avg_accuracy_pct >= 60:
-                feedback = f"Solid progress across {len(all_topic_names)} topic(s) with a {avg_accuracy_pct}% diagnostic average. Core fundamentals are in place, but several edge cases in recent assessments require focused flashcard drill sessions in Revise mode."
-            else:
-                feedback = f"You are actively laying the groundwork across {len(all_topic_names)} topic(s). With an average test accuracy of {avg_accuracy_pct}%, we recommend revisiting your earlier chat self-explanations and completing targeted revisions before your next test."
+        if avg_accuracy_pct >= 80:
+            feedback = f"Outstanding performance! You have mastered {mastered_topics_count} topic(s) with an average diagnostic score of {avg_accuracy_pct}%. Your recall patterns are exceptionally stable. Continue consistent spaced revisions to lock in conceptual depth."
+        elif avg_accuracy_pct >= 60:
+            feedback = f"Solid progress across {len(all_topic_names)} topic(s) with a {avg_accuracy_pct}% diagnostic average. Core fundamentals are in place, but several edge cases in recent assessments require focused flashcard drill sessions in Revise mode."
+        else:
+            feedback = f"You are actively laying the groundwork across {len(all_topic_names)} topic(s). With an average test accuracy of {avg_accuracy_pct}%, revisit your earlier chat self-explanations and complete targeted revisions before your next test."
 
     metrics = {
         "total_topics": len(all_topic_names),
@@ -1662,8 +1834,34 @@ def _generate_student_report_data(student_id: str) -> Dict[str, Any]:
                 "action_label": "Go to Learn Mode"
             })
 
+    # One request produces the report and all translations together.
+    report_strings = []
+    for item in improvement_areas:
+        report_strings.extend([item.get("title", ""), item.get("description", ""), item.get("action_label", "")])
+    ai_bundle = _generate_progress_ai_bundle(
+        student_id=student_id,
+        output_language=output_language,
+        topic_names=all_topic_names,
+        mastered_count=mastered_topics_count,
+        test_count=len(test_sessions),
+        average_score=avg_accuracy_pct,
+        revision_count=sum(r["revisions_count"] for r in rev_map.values()),
+        misconception_count=len(active_misc_list),
+        strings=report_strings,
+        fallback_feedback=feedback,
+    )
+    feedback = ai_bundle["feedback"]
+    all_translations = ai_bundle["translations"]
+    translated_report_strings = all_translations
+    cursor = 0
+    for item in improvement_areas:
+        if cursor + 3 <= len(translated_report_strings):
+            item["title"], item["description"], item["action_label"] = translated_report_strings[cursor:cursor + 3]
+        cursor += 3
+
     report_payload = {
         "student_id": student_id,
+        "output_language": normalize_output_language(output_language),
         "metrics": metrics,
         "summary": metrics, # alias for compatibility
         "topics_breakdown": topics_breakdown,
@@ -1673,7 +1871,8 @@ def _generate_student_report_data(student_id: str) -> Dict[str, Any]:
         "scheduled_timetable": schedules,
         "schedules": schedules, # alias for compatibility
         "feedback": feedback,
-        "diagnostic_feedback": feedback # alias for compatibility
+        "diagnostic_feedback": feedback, # alias for compatibility
+        "ai_summary": ai_bundle["summary"],
     }
 
     return report_payload
@@ -1687,11 +1886,19 @@ def get_latest_progress_report(student_id: str):
     return {"has_report": False, "report": None}
 
 @app.post("/api/progress/generate/{student_id}")
-def generate_latest_progress_report(student_id: str):
+def generate_latest_progress_report(student_id: str, req: Optional[ProgressGenerateRequest] = None):
     student_id = current_account_id()
-    report_data = _generate_student_report_data(student_id)
+    output_language = req.output_language if req else "auto"
+    report_data = _generate_student_report_data(student_id, output_language=output_language)
     saved = progress_memory.save_report(student_id, report_data)
     return {"has_report": True, "report": saved}
+
+
+@app.post("/api/progress/translate")
+def translate_progress_page(req: ProgressTranslateRequest):
+    language = normalize_output_language(req.output_language)
+    translations = _translate_progress_ui_once(req.strings, language)
+    return {"output_language": language, "translations": translations}
 
 @app.get("/api/progress/summary/{student_id}")
 def get_student_progress_summary(student_id: str):

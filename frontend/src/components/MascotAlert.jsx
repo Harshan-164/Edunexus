@@ -137,7 +137,7 @@ export default function MascotAlert({
                 }}
               >
                 {type === 'pomodoro' ? <Coffee size={13} /> : <Droplets size={13} />}
-                {type === 'pomodoro' ? 'EduNexus Study Coach' : 'Hydration & Movement'}
+                {type === 'pomodoro' ? 'Nexora Study Coach' : 'Hydration & Movement'}
               </span>
             </div>
 

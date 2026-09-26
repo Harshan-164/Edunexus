@@ -3,6 +3,7 @@ from typing import List, Optional
 from pydantic import ValidationError
 from backend.agents.llm_utils import create_chat_completion
 from backend.models.schemas import VerificationQuestion, VerificationResponse
+from backend.learning.languages import build_language_prompt
 
 class VerificationAgent:
     def __init__(self, llm):
@@ -17,6 +18,7 @@ class VerificationAgent:
         sub_concept = kwargs.get("sub_concept") or (args[1] if len(args) > 1 else "")
         misconception = kwargs.get("misconception") or (args[2] if len(args) > 2 else "")
         strategy = kwargs.get("strategy") or ""
+        output_language = kwargs.get("output_language", "auto")
         
         diag = {"sub_concept": sub_concept, "misconception": misconception}
         rem = {"explanation": strategy or f"Remediating {misconception} in {sub_concept}"}
@@ -27,7 +29,8 @@ class VerificationAgent:
                 syllabus_context="",
                 diagnosis=diag,
                 remediation=rem,
-                previous_question_ids=[]
+                previous_question_ids=[],
+                output_language=output_language,
             )
             if hasattr(res, "questions") and res.questions:
                 return res.questions[0]
@@ -53,7 +56,8 @@ class VerificationAgent:
         diagnosis: dict,
         remediation: dict,
         previous_question_ids: List[str],
-        learner_context: Optional[str] = None
+        learner_context: Optional[str] = None,
+        output_language: str = "auto",
     ) -> VerificationResponse:
         """
         Generates 2 verification questions targeting the specific diagnosed misconception after remediation.
@@ -81,6 +85,7 @@ class VerificationAgent:
             "You must respond with valid JSON that matches the following JSON Schema:\n"
             f"{json.dumps(schema_json)}\n"
         )
+        system_prompt += build_language_prompt(output_language)
 
 
         user_prompt = (

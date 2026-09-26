@@ -23,6 +23,7 @@ import {
 import FlashcardDeck from '../components/FlashcardDeck';
 import FormattedText from '../components/FormattedText';
 import ScheduleModal from '../components/ScheduleModal';
+import LanguageSelector, { loadOutputLanguage, saveOutputLanguage } from '../components/LanguageSelector';
 
 function formatSeconds(sec) {
   if (!sec || isNaN(sec)) return '0s';
@@ -65,13 +66,14 @@ function TestThinkingIndicator({ topic, questionCount }) {
         </span>
       </div>
       <p style={{ fontSize: '0.82rem', color: '#94a3b8', maxWidth: '440px', margin: '0 auto' }}>
-        EduNexus is compiling a custom test targeting your exact learning signals and conceptual boundary rules.
+        Nexora is compiling a custom test targeting your exact learning signals and conceptual boundary rules.
       </p>
     </div>
   );
 }
 
 export default function Test({ studentId, studentProfile, onRefreshProfile }) {
+  const [outputLanguage, setOutputLanguage] = useState(() => loadOutputLanguage(studentId));
   // Main subsection tabs
   const [activeTab, setActiveTab] = useState('studied_concept'); // 'studied_concept' | 'uploaded_file'
   const [showScheduleModal, setShowScheduleModal] = useState(false);
@@ -338,6 +340,7 @@ export default function Test({ studentId, studentProfile, onRefreshProfile }) {
           document_name: activeTab === 'uploaded_file' ? docName : null,
           question_count: clampedCount,
           loop_round: round,
+          output_language: outputLanguage,
         }),
       });
 
@@ -443,6 +446,7 @@ export default function Test({ studentId, studentProfile, onRefreshProfile }) {
           review_mode: mode,
           failed_results: submitResult?.failed_results || [],
           timings: questionTimings,
+          output_language: outputLanguage,
         }),
       });
 
@@ -489,6 +493,8 @@ export default function Test({ studentId, studentProfile, onRefreshProfile }) {
         <p style={{ fontSize: '0.88rem', color: '#94a3b8' }}>
           Configurable 5 to 25 question diagnostic tests with per-question timing analysis, pattern remediation (Text & Flashcards), and dynamic quiz looping.
         </p>
+
+        <LanguageSelector compact value={outputLanguage} onChange={(value) => { setOutputLanguage(value); saveOutputLanguage(studentId, value); }} />
 
         {/* 2 Subsections Navigation Tabs & Schedule Button */}
         <div className="test-mode-tabs" style={{ display: 'flex', gap: '10px', marginTop: '18px', borderTop: '1px solid rgba(148, 163, 184, 0.15)', paddingTop: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -1276,7 +1282,7 @@ export default function Test({ studentId, studentProfile, onRefreshProfile }) {
                 </h4>
               </div>
               <p style={{ fontSize: '0.9rem', color: '#cbd5e1', lineHeight: 1.5, marginBottom: '20px' }}>
-                EduNexus can analyze your test answer patterns and synthesize a personalized review to eliminate any misunderstandings before you test again.
+                Nexora can analyze your test answer patterns and synthesize a personalized review to eliminate any misunderstandings before you test again.
               </p>
 
               <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>

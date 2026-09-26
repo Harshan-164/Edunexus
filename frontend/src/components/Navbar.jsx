@@ -1,5 +1,5 @@
 import React from 'react';
-import { BookOpen, CheckCircle2, GraduationCap, Home, LogOut, RefreshCw, Sparkles, TrendingUp, User } from 'lucide-react';
+import { Award, BookOpen, CheckCircle2, Flame, GraduationCap, Home, LogOut, RefreshCw, Sparkles, TrendingUp, User } from 'lucide-react';
 
 const NAV_ITEMS = [
   { id: 'home', label: 'Overview', icon: Home },
@@ -24,7 +24,7 @@ export default function Navbar({
         <button className="brand" onClick={() => setMode('home')} aria-label="Go to overview">
           <span className="brand-mark"><GraduationCap size={22} strokeWidth={1.8} /></span>
           <span className="brand-copy">
-            <strong>EduNexus</strong>
+            <strong>Nexora</strong>
             <small>Adaptive learning workspace</small>
           </span>
         </button>
@@ -40,16 +40,56 @@ export default function Navbar({
         <div className="profile-cluster">
           {learnerSummary && (
             <div className="profile-stats" aria-label="Learning progress">
-              <span className="stat-pill stat-pill--success"><CheckCircle2 size={14} /> {learnerSummary.mastered_subconcepts_count || 0}</span>
+              <span
+                className="stat-pill stat-pill--streak"
+                title={learnerSummary.streaks?.streak_message || 'Study streak'}
+                style={{
+                  background: 'rgba(249, 115, 22, 0.14)',
+                  color: '#fb923c',
+                  border: '1px solid rgba(249, 115, 22, 0.28)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  cursor: 'pointer'
+                }}
+                onClick={() => onOpenProfile('rewards')}
+              >
+                <Flame size={14} color="#f97316" fill={learnerSummary.streaks?.current_streak > 0 ? '#f97316' : 'none'} />
+                {learnerSummary.streaks?.current_streak || 0}d
+              </span>
+              {learnerSummary.rewards?.level && (
+                <span
+                  className="stat-pill stat-pill--level"
+                  title={`Level ${learnerSummary.rewards.level}: ${learnerSummary.rewards.level_title} (${learnerSummary.rewards.xp} XP)`}
+                  style={{
+                    background: 'rgba(168, 85, 247, 0.14)',
+                    color: '#c084fc',
+                    border: '1px solid rgba(168, 85, 247, 0.28)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    cursor: 'pointer'
+                  }}
+                  onClick={() => onOpenProfile('rewards')}
+                >
+                  <Award size={13} color="#c084fc" />
+                  Lvl {learnerSummary.rewards.level}
+                </span>
+              )}
+              <span className="stat-pill stat-pill--success" title={`${learnerSummary.mastered_subconcepts_count || 0} subconcepts mastered`}>
+                <CheckCircle2 size={14} /> {learnerSummary.mastered_subconcepts_count || 0}
+              </span>
               {learnerSummary.active_misconceptions_count > 0 && (
-                <span className="stat-pill stat-pill--attention"><Sparkles size={14} /> {learnerSummary.active_misconceptions_count}</span>
+                <span className="stat-pill stat-pill--attention" title={`${learnerSummary.active_misconceptions_count} active misconceptions to repair`}>
+                  <Sparkles size={14} /> {learnerSummary.active_misconceptions_count}
+                </span>
               )}
             </div>
           )}
           
           <button
             className="account-profile-button"
-            onClick={onOpenProfile}
+            onClick={() => onOpenProfile('profile')}
             title={studentProfile?.name ? `Student Profile: ${studentProfile.name}` : 'Setup Student Profile'}
             style={{
               display: 'inline-flex',

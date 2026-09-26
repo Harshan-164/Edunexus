@@ -3,6 +3,7 @@ import logging
 import re
 from typing import Any, Dict, List, Optional
 from backend.media.lesson_media import normalize_flashcards, parse_json_response
+from backend.learning.languages import build_language_prompt
 
 logger = logging.getLogger("EDUNEXUS-TEST-AGENT")
 
@@ -25,7 +26,8 @@ class TestAgent:
         chat_messages: Optional[List[Dict[str, Any]]] = None,
         revision_sessions: Optional[List[Dict[str, Any]]] = None,
         past_quiz_history: Optional[List[Dict[str, Any]]] = None,
-        doc_context: Optional[str] = None
+        doc_context: Optional[str] = None,
+        output_language: str = "auto"
     ) -> List[Dict[str, Any]]:
         """Generates between 5 and 25 questions with deterministic options and explanations."""
         count = max(5, min(25, question_count))
@@ -65,11 +67,13 @@ class TestAgent:
 
         context_brief = "\n\n".join(evidence_lines) if evidence_lines else f"Topic: {topic}. Cover core rules, invariants, operations, and common edge-case misconceptions."
 
+        language_prompt = build_language_prompt(output_language)
         prompt = (
             f"You are the EDUNEXUS Assessment Specialist.\n"
             f"Topic: {topic}\n"
             f"Question Count: {count}\n\n"
             f"LEARNER STUDY SIGNALS & CONTENT CONTEXT:\n{context_brief}\n\n"
+            f"{language_prompt}\n"
             f"Task: Generate exactly {count} challenging, high-yield multiple-choice questions for '{topic}'.\n"
             f"If an uploaded document is provided, test specifically on concepts from that document.\n"
             f"Target known misconception areas, boundary constraints, and practical application.\n\n"
@@ -132,7 +136,8 @@ class TestAgent:
         topic: str,
         failed_results: List[Dict[str, Any]],
         review_mode: str = "text",
-        timings: Optional[Dict[str, float]] = None
+        timings: Optional[Dict[str, float]] = None,
+        output_language: str = "auto"
     ) -> Dict[str, Any]:
         """
         Analyzes only the test answer patterns, missed questions, and response timings
@@ -154,11 +159,13 @@ class TestAgent:
 
         error_context = "\n".join(error_summary_lines)
 
+        language_prompt = build_language_prompt(output_language)
         if review_mode == "flashcards":
             prompt = (
                 f"You are the EDUNEXUS Flashcard Remediation Specialist.\n"
                 f"Topic: {topic}\n\n"
                 f"STUDENT TEST ANSWER PATTERN & MISSED QUESTIONS:\n{error_context}\n\n"
+                f"{language_prompt}\n"
                 f"Generate a customized set of 3 to 6 interactive flashcards specifically targeting the concepts, rules, and formulas that the student missed on the test.\n"
                 f"Return ONLY valid JSON matching this exact schema:\n"
                 "{\n"
@@ -207,6 +214,7 @@ class TestAgent:
                 f"You are the EDUNEXUS Concept Remediation Specialist.\n"
                 f"Topic: {topic}\n\n"
                 f"STUDENT TEST ANSWER PATTERN & MISSED QUESTIONS:\n{error_context}\n\n"
+                f"{language_prompt}\n"
                 f"Write a focused, targeted concept explanation addressing only the exact mistakes and misconceptions demonstrated in the student's test answers.\n"
                 f"Explain the underlying principles, highlight where the reasoning went wrong, and provide a clear, step-by-step example.\n"
                 f"Use bold markdown (**key concepts**) and code formatting where helpful. Keep it concise, insightful, and practical."

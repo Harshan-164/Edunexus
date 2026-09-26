@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Activity, AlertTriangle, ArrowDownToLine, BarChart3, BookOpen, ChevronDown, ChevronUp, ClipboardCheck, GraduationCap, LogOut, RefreshCw, Search, ShieldCheck, Sparkles, Users } from 'lucide-react';
+import { Activity, AlertTriangle, ArrowDownToLine, BarChart3, BellRing, BookOpen, ChevronDown, ChevronUp, ClipboardCheck, Clock3, GraduationCap, HeartPulse, LogOut, RefreshCw, Search, Send, ShieldCheck, Sparkles, TrendingUp, Users, X } from 'lucide-react';
 
 const formatDateTime = (value) => {
   if (!value) return 'No activity yet';
@@ -7,6 +7,11 @@ const formatDateTime = (value) => {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
 };
 const csvCell = (value) => `"${String(value ?? '').replaceAll('"', '""')}"`;
+const formatDuration = (seconds = 0) => {
+  if (seconds < 60) return seconds ? '< 1 min' : 'No time yet';
+  const hours = Math.floor(seconds / 3600); const minutes = Math.floor((seconds % 3600) / 60);
+  return hours ? `${hours}h ${minutes}m` : `${minutes} min`;
+};
 
 export default function Admin({ account, onLogout }) {
   const [data, setData] = useState(null);
@@ -16,6 +21,12 @@ export default function Admin({ account, onLogout }) {
   const [query, setQuery] = useState('');
   const [standing, setStanding] = useState('all');
   const [expandedId, setExpandedId] = useState(null);
+  const [section, setSection] = useState('performance');
+  const [reminderStudent, setReminderStudent] = useState(null);
+  const [reminderAction, setReminderAction] = useState('learn');
+  const [reminderMessage, setReminderMessage] = useState('A quick learning session today will keep your momentum going.');
+  const [sendingReminder, setSendingReminder] = useState(false);
+  const [toast, setToast] = useState('');
 
   const loadOverview = async (quiet = false) => {
     quiet ? setRefreshing(true) : setLoading(true);
@@ -55,16 +66,35 @@ export default function Admin({ account, onLogout }) {
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     const anchor = document.createElement('a');
     anchor.href = url;
-    anchor.download = `edunexus-students-${new Date().toISOString().slice(0, 10)}.csv`;
+    anchor.download = `nexora-students-${new Date().toISOString().slice(0, 10)}.csv`;
     anchor.click();
     URL.revokeObjectURL(url);
   };
 
   const summary = data?.summary || {};
+  const allStudents = data?.students || [];
+  const maxActivity = Math.max(1, ...allStudents.map((student) => student.progress.chat_sessions + student.progress.revision_sessions + student.progress.completed_tests));
+  const sendReminder = async () => {
+    if (!reminderStudent || !reminderMessage.trim()) return;
+    setSendingReminder(true);
+    try {
+      const response = await fetch('/api/admin/reminders', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ student_id: reminderStudent.id, action_type: reminderAction, title: `Time to ${reminderAction}`, message: reminderMessage }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.detail || 'Could not send reminder.');
+      setToast(`Reminder sent to ${reminderStudent.name}.`);
+      setReminderStudent(null);
+      setTimeout(() => setToast(''), 3500);
+      loadOverview(true);
+    } catch (sendError) { setToast(sendError.message); }
+    finally { setSendingReminder(false); }
+  };
   return (
     <div className="admin-shell">
       <header className="admin-topbar">
-        <div className="admin-topbar__brand"><span><GraduationCap size={22} /></span><div><strong>EduNexus</strong><small>Top Teacher Console</small></div></div>
+        <div className="admin-topbar__brand"><span><GraduationCap size={22} /></span><div><strong>Nexora</strong><small>Top Teacher Console</small></div></div>
         <div className="admin-topbar__account"><span className="admin-role-pill"><ShieldCheck size={14} /> Administrator</span><div><strong>{account.profile?.name || 'Top Teacher'}</strong><small>@{account.username}</small></div><button onClick={onLogout} title="Sign out" aria-label="Sign out"><LogOut size={17} /></button></div>
       </header>
 
@@ -83,7 +113,44 @@ export default function Admin({ account, onLogout }) {
             <article><span className="metric-icon metric-icon--rose"><AlertTriangle size={19} /></span><div><small>Needs attention</small><strong>{summary.needs_attention || 0}</strong><em>Students below 60%</em></div></article>
           </section>
 
-          <section className="admin-table-card">
+          <nav className="admin-section-tabs" aria-label="Teacher console sections">
+            <button className={section === 'performance' ? 'is-active' : ''} onClick={() => setSection('performance')}><TrendingUp size={17} /> Performance</button>
+            <button className={section === 'students' ? 'is-active' : ''} onClick={() => setSection('students')}><Users size={17} /> Student register</button>
+            <button className={section === 'care' ? 'is-active' : ''} onClick={() => setSection('care')}><HeartPulse size={17} /> Student Care</button>
+          </nav>
+
+          {section === 'performance' && <section className="performance-grid">
+            <article className="admin-chart-card admin-chart-card--wide">
+              <div className="chart-heading"><div><span>Assessment performance</span><h2>Student score overview</h2></div><BarChart3 size={21} /></div>
+              <div className="performance-bars">{allStudents.map((student) => <div className="performance-bar-row" key={student.id}>
+                <label><strong>{student.name}</strong><small>{student.progress.completed_tests ? `${student.progress.completed_tests} completed` : 'No completed tests'}</small></label>
+                <div><span style={{ width: `${student.progress.average_score}%` }} className={student.progress.average_score < 60 ? 'is-low' : student.progress.average_score >= 80 ? 'is-high' : ''} /></div><b>{student.progress.average_score}%</b>
+              </div>)}{!allStudents.length && <div className="admin-empty"><Users size={22} /><strong>No student performance yet</strong></div>}</div>
+            </article>
+            <article className="admin-chart-card">
+              <div className="chart-heading"><div><span>Cohort health</span><h2>Standing mix</h2></div><Sparkles size={20} /></div>
+              <div className="standing-visual"><div className="standing-donut" style={{ '--excellent': `${allStudents.length ? allStudents.filter((s) => s.standing === 'Excelling').length / allStudents.length * 100 : 0}%`, '--attention': `${allStudents.length ? allStudents.filter((s) => s.standing === 'Needs attention').length / allStudents.length * 100 : 0}%` }}><strong>{allStudents.length}</strong><small>students</small></div><div className="standing-legend">{['Excelling', 'On track', 'Needs attention', 'Not started'].map((label) => <span key={label}><i className={`legend-${label.toLowerCase().replaceAll(' ', '-')}`} />{label}<b>{allStudents.filter((student) => student.standing === label).length}</b></span>)}</div></div>
+            </article>
+            <article className="admin-chart-card admin-chart-card--wide">
+              <div className="chart-heading"><div><span>Learning engagement</span><h2>Workspace activity by student</h2></div><Activity size={20} /></div>
+              <div className="activity-chart">{allStudents.map((student) => { const p = student.progress; const total = p.chat_sessions + p.revision_sessions + p.completed_tests; return <div key={student.id} className="activity-chart-row"><label>{student.name}</label><div title={`${p.chat_sessions} learn · ${p.revision_sessions} revise · ${p.completed_tests} tests`}><i className="activity-learn" style={{ width: `${p.chat_sessions / maxActivity * 100}%` }} /><i className="activity-revise" style={{ width: `${p.revision_sessions / maxActivity * 100}%` }} /><i className="activity-test" style={{ width: `${p.completed_tests / maxActivity * 100}%` }} /></div><b>{total}</b></div>; })}</div>
+              <footer className="activity-legend"><span><i className="activity-learn" /> Learn</span><span><i className="activity-revise" /> Revise</span><span><i className="activity-test" /> Tests</span></footer>
+            </article>
+            <article className="admin-chart-card insight-card"><span><BellRing size={22} /></span><h2>Teacher insight</h2><p>{summary.needs_attention ? `${summary.needs_attention} student${summary.needs_attention === 1 ? '' : 's'} may benefit from a Test or Revise reminder.` : 'The cohort is currently on track. Keep encouraging regular learning sessions.'}</p><button onClick={() => setSection('care')}>Open Student Care</button></article>
+          </section>}
+
+          {section === 'care' && <section className="student-care-section">
+            <div className="care-summary"><div><span><Clock3 size={17} /> Total focused time</span><strong>{formatDuration(summary.total_active_seconds)}</strong></div><div><span><Activity size={17} /> Active today</span><strong>{summary.active_today || 0}</strong></div><div><span><BellRing size={17} /> Unread reminders</span><strong>{summary.pending_reminders || 0}</strong></div></div>
+            <div className="care-heading"><div><span>Engagement & wellbeing</span><h2>Student Care</h2><p>See participation signals and send a gentle, actionable reminder directly to a student’s inbox.</p></div></div>
+            <div className="student-care-grid">{allStudents.map((student) => <article className="care-student-card" key={student.id}>
+              <header><div className="student-identity"><span>{student.name.slice(0, 1).toUpperCase()}</span><div><strong>{student.name}</strong><small>@{student.username}</small></div></div><em className={`engagement-badge engagement-badge--${student.usage.status.toLowerCase().replaceAll(' ', '-')}`}>{student.usage.status}</em></header>
+              <div className="care-time"><Clock3 size={22} /><div><small>Time in Nexora</small><strong>{formatDuration(student.usage.total_active_seconds)}</strong><span>Last seen {formatDateTime(student.usage.last_seen)}</span></div></div>
+              <div className="care-signals"><span><b>{student.progress.average_score}%</b> average</span><span><b>{student.progress.topics}</b> topics</span><span><b>{student.usage.unread_notifications}</b> unread</span></div>
+              <button onClick={() => { setReminderStudent(student); setReminderAction('learn'); setReminderMessage('A quick learning session today will keep your momentum going.'); }}><Send size={16} /> Send reminder</button>
+            </article>)}</div>
+          </section>}
+
+          {section === 'students' && <section className="admin-table-card">
             <div className="admin-table-heading"><div><span><Sparkles size={15} /> Student data register</span><h2>All student records</h2><p>One row per student. Scroll horizontally for the complete evaluator walkthrough.</p></div><button onClick={exportCsv} disabled={!students.length}><ArrowDownToLine size={16} /> Export CSV</button></div>
             <div className="admin-table-tools"><label><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search name, username, course or topic…" /></label><select value={standing} onChange={(event) => setStanding(event.target.value)} aria-label="Filter by standing"><option value="all">All standings</option><option>Excelling</option><option>On track</option><option>Needs attention</option><option>Not started</option></select><span>{students.length} of {data?.students?.length || 0} students</span></div>
             <div className="admin-table-scroll"><table className="admin-student-table">
@@ -107,9 +174,13 @@ export default function Admin({ account, onLogout }) {
                 </React.Fragment>;
               })}{!students.length && <tr><td colSpan="18"><div className="admin-empty"><Users size={23} /><strong>No matching students</strong><span>Try clearing the search or standing filter.</span></div></td></tr>}</tbody>
             </table></div>
-          </section>
+          </section>}
         </>}
       </main>
+      {reminderStudent && <div className="reminder-overlay" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setReminderStudent(null)}><section className="reminder-dialog" role="dialog" aria-modal="true" aria-label="Send student reminder"><header><div><span>Teacher reminder</span><h2>Message {reminderStudent.name}</h2></div><button onClick={() => setReminderStudent(null)} aria-label="Close"><X size={19} /></button></header><div className="reminder-action-options">{['learn', 'revise', 'test'].map((action) => <button key={action} className={reminderAction === action ? 'is-active' : ''} onClick={() => { setReminderAction(action); setReminderMessage(action === 'learn' ? 'A quick learning session today will keep your momentum going.' : action === 'revise' ? 'Please revisit your recent topics today to strengthen your recall.' : 'You are ready for a quick test. Complete one today to check your progress.'); }}>{action === 'learn' ? <BookOpen size={17} /> : action === 'revise' ? <RefreshCw size={17} /> : <ClipboardCheck size={17} />}<span>{action}</span></button>)}</div><label>Message<textarea rows="4" maxLength="500" value={reminderMessage} onChange={(event) => setReminderMessage(event.target.value)} /></label><footer><small>The reminder stays in the student inbox until they read it.</small><button onClick={sendReminder} disabled={sendingReminder || !reminderMessage.trim()}><Send size={16} /> {sendingReminder ? 'Sending…' : 'Send reminder'}</button></footer></section></div>}
+      {toast && <div className="admin-toast"><CheckCircleIcon />{toast}</div>}
     </div>
   );
 }
+
+function CheckCircleIcon() { return <span aria-hidden="true">✓</span>; }

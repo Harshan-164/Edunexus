@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import FlashcardDeck from '../components/FlashcardDeck';
 import Visualizer from '../components/Visualizer';
+import LanguageSelector, { loadOutputLanguage, saveOutputLanguage } from '../components/LanguageSelector';
 
 const formatDate = (value) => {
   if (!value) return '';
@@ -21,6 +22,7 @@ const fileSize = (bytes = 0) => bytes < 1024 * 1024
   : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 
 const DEFAULT_LEARN_SETTINGS = {
+  output_language: 'auto',
   chat_style: 'auto',
   chat_custom_instruction: '',
   animation_style: 'auto',
@@ -32,12 +34,15 @@ const DEFAULT_LEARN_SETTINGS = {
   flashcard_custom_instruction: '',
 };
 
-const learnSettingsKey = (studentId) => `edunexus:learn-settings:${studentId || 'default'}`;
+const learnSettingsKey = (studentId) => `nexora:learn-settings:${studentId || 'default'}`;
 
 const loadLearnSettings = (studentId) => {
   try {
-    const saved = JSON.parse(localStorage.getItem(learnSettingsKey(studentId)) || '{}');
-    return { ...DEFAULT_LEARN_SETTINGS, ...saved };
+    const key = learnSettingsKey(studentId);
+    const legacyKey = `edunexus:learn-settings:${studentId || 'default'}`;
+    const raw = localStorage.getItem(key) || localStorage.getItem(legacyKey);
+    const saved = JSON.parse(raw || '{}');
+    return { ...DEFAULT_LEARN_SETTINGS, ...saved, output_language: loadOutputLanguage(studentId) };
   } catch {
     return { ...DEFAULT_LEARN_SETTINGS };
   }
@@ -70,6 +75,9 @@ function LearnSettingsDialog({ draft, setDraft, onClose, onSave, onReset }) {
         </header>
 
         <div className="learn-settings-body">
+          <section className="learn-settings-section">
+            <LanguageSelector value={draft.output_language} onChange={(value) => setValue('output_language', value)} />
+          </section>
           <section className="learn-settings-section">
             <div className="learn-settings-section__title"><Type size={16} /><div><strong>Chat responses</strong><small>Used when “Text” is selected.</small></div></div>
             <SettingChoice label="Chat style" value={draft.chat_style} options={[{ value: 'auto', label: 'Auto' }, { value: 'crisp', label: 'Crisp' }, { value: 'detailed', label: 'Detailed' }]} onChange={(value) => setValue('chat_style', value)} />
@@ -339,10 +347,19 @@ export default function Learn({ studentId, onRefreshProfile }) {
   const saveSettings = () => {
     setLearnSettings(settingsDraft);
     localStorage.setItem(learnSettingsKey(studentId), JSON.stringify(settingsDraft));
+    saveOutputLanguage(studentId, settingsDraft.output_language);
     setShowSettings(false);
   };
 
   const resetSettings = () => setSettingsDraft({ ...DEFAULT_LEARN_SETTINGS });
+
+  const changeOutputLanguage = (outputLanguage) => {
+    const nextSettings = { ...learnSettings, output_language: outputLanguage };
+    setLearnSettings(nextSettings);
+    setSettingsDraft((previous) => ({ ...previous, output_language: outputLanguage }));
+    localStorage.setItem(learnSettingsKey(studentId), JSON.stringify(nextSettings));
+    saveOutputLanguage(studentId, outputLanguage);
+  };
 
   const loadSessions = async (preferredId) => {
     setLoadingSessions(true);
@@ -352,7 +369,7 @@ export default function Learn({ studentId, onRefreshProfile }) {
       if (!res.ok) throw new Error('Could not load your chats.');
       const data = await res.json();
       setSessions(data.sessions || []);
-      const remembered = preferredId || localStorage.getItem(`edunexus:last-chat:${studentId}`);
+      const remembered = preferredId || localStorage.getItem(`nexora:last-chat:${studentId}`) || localStorage.getItem(`edunexus:last-chat:${studentId}`);
       if (remembered && data.sessions?.some((session) => session.id === remembered)) {
         await openSession(remembered, false);
       } else {
@@ -376,7 +393,7 @@ export default function Learn({ studentId, onRefreshProfile }) {
       if (!res.ok) throw new Error('Could not open this chat.');
       const session = await res.json();
       setActiveSession(session);
-      localStorage.setItem(`edunexus:last-chat:${studentId}`, sessionId);
+      localStorage.setItem(`nexora:last-chat:${studentId}`, sessionId);
       if (closeMobile && window.innerWidth <= 760) setSidebarOpen(false);
     } catch (err) {
       setError(err.message);
@@ -402,6 +419,7 @@ export default function Learn({ studentId, onRefreshProfile }) {
           await openSession(remaining[0].id, false);
         } else {
           setActiveSession(null);
+          localStorage.removeItem(`nexora:last-chat:${studentId}`);
           localStorage.removeItem(`edunexus:last-chat:${studentId}`);
         }
       }
@@ -434,7 +452,7 @@ export default function Learn({ studentId, onRefreshProfile }) {
       if (!res.ok) throw new Error(data.detail || 'Could not create the chat.');
       setActiveSession(data);
       setSessions((previous) => [{ ...data, message_count: 0, attachment_count: 0 }, ...previous]);
-      localStorage.setItem(`edunexus:last-chat:${studentId}`, data.id);
+      localStorage.setItem(`nexora:last-chat:${studentId}`, data.id);
       setNewLesson({ title: '', description: '' });
       setShowCreate(false);
       setSidebarOpen(window.innerWidth > 760);
@@ -530,6 +548,7 @@ export default function Learn({ studentId, onRefreshProfile }) {
           student_id: studentId,
           topic: activeSession.title,
           document_name: activeSession.attachments[0]?.stored_name || null,
+          output_language: learnSettings.output_language,
         }),
       });
       if (!res.ok) throw new Error('Could not create a knowledge check.');
@@ -663,6 +682,7 @@ export default function Learn({ studentId, onRefreshProfile }) {
                 <button type="button" className={responseMode === 'text' ? 'is-active' : ''} onClick={() => setResponseMode('text')}><Type size={14} /> Text</button>
                 <button type="button" className={responseMode === 'flashcards' ? 'is-active' : ''} onClick={() => setResponseMode('flashcards')}><Layers size={14} /> Flashcards</button>
                 <button type="button" className={responseMode === 'video' ? 'is-active' : ''} onClick={() => setResponseMode('video')}><Play size={14} /> Animated video</button>
+                <LanguageSelector compact value={learnSettings.output_language} onChange={changeOutputLanguage} />
               </div>
               <form className="chat-composer" onSubmit={sendMessage}>
                 <input ref={fileInputRef} type="file" accept=".pdf,.txt" onChange={uploadFile} hidden />

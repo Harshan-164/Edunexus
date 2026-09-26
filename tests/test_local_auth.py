@@ -40,6 +40,25 @@ def test_duplicate_usernames_are_rejected_case_insensitively(tmp_path):
         assert "already in use" in str(error)
 
 
+def test_activity_and_teacher_notifications_are_persisted_per_student(tmp_path):
+    store = AuthStore(str(tmp_path / "accounts.db"))
+    student = store.create_account("care_student", "password-123", {"name": "Care Student"})
+    admin = store.verify_credentials("admin", "admin")
+
+    first = store.record_activity(student["id"], 60)
+    second = store.record_activity(student["id"], 500)
+    assert first["total_active_seconds"] == 60
+    assert second["total_active_seconds"] == 180
+
+    reminder = store.create_notification(
+        student["id"], "revise", "Time to revise", "Review your recent lesson.", admin["id"]
+    )
+    assert store.list_notifications(student["id"], unread_only=True)[0]["id"] == reminder["id"]
+    assert store.list_accounts(role="student")[0]["activity"]["unread_notifications"] == 1
+    assert store.mark_notification_read(reminder["id"], student["id"])
+    assert store.list_notifications(student["id"], unread_only=True) == []
+
+
 def test_each_account_gets_an_isolated_sqlite_database(tmp_path):
     first = UserServices("account_a", str(tmp_path / "users"))
     second = UserServices("account_b", str(tmp_path / "users"))
@@ -138,3 +157,48 @@ def test_admin_overview_is_protected_and_contains_walkthrough_fields(tmp_path, m
         assert student["walkthrough"]["tester_type"] == "Student"
         assert student["walkthrough"]["course_year"] == "Computer Science / 2nd Year"
         assert "technical_monitor" in student["walkthrough"]
+
+
+def test_admin_can_send_reminder_and_only_target_student_can_read_it(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    import backend.auth.user_services as user_services_module
+    import server
+
+    store = AuthStore(str(tmp_path / "accounts.db"))
+    services = {}
+    def temporary_services(account_id):
+        if account_id not in services:
+            services[account_id] = UserServices(account_id, str(tmp_path / "users"))
+        return services[account_id]
+
+    monkeypatch.setattr(server, "auth_store", store)
+    monkeypatch.setattr(server, "services_for", temporary_services)
+    monkeypatch.setattr(user_services_module, "services_for", temporary_services)
+
+    with TestClient(server.app) as client:
+        first = client.post("/api/auth/register", json={
+            "username": "reminder_one", "password": "password-123", "name": "Reminder One",
+        }).json()["account"]
+        client.post("/api/auth/logout")
+        second = client.post("/api/auth/register", json={
+            "username": "reminder_two", "password": "password-123", "name": "Reminder Two",
+        }).json()["account"]
+        client.post("/api/auth/logout")
+
+        client.post("/api/auth/login", json={"username": "admin", "password": "admin"})
+        sent = client.post("/api/admin/reminders", json={
+            "student_id": first["id"], "action_type": "test", "message": "Please take a short test today.",
+        })
+        assert sent.status_code == 201
+        notification_id = sent.json()["notification"]["id"]
+        client.post("/api/auth/logout")
+
+        client.post("/api/auth/login", json={"username": second["username"], "password": "password-123"})
+        assert client.get("/api/notifications").json()["notifications"] == []
+        assert client.post(f"/api/notifications/{notification_id}/read").status_code == 404
+        client.post("/api/auth/logout")
+
+        client.post("/api/auth/login", json={"username": first["username"], "password": "password-123"})
+        inbox = client.get("/api/notifications").json()["notifications"]
+        assert inbox[0]["action_type"] == "test"
+        assert client.post(f"/api/notifications/{notification_id}/read").status_code == 200

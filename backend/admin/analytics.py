@@ -1,6 +1,6 @@
 """Read-only aggregation of isolated student databases for the admin dashboard."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List
 
 
@@ -47,6 +47,25 @@ def _prior_knowledge(profile: Dict[str, Any]) -> str:
     return "Beginner"
 
 
+def _engagement_status(last_seen: str) -> str:
+    if not last_seen:
+        return "Never active"
+    try:
+        seen = datetime.fromisoformat(last_seen.replace("Z", "+00:00"))
+        if seen.tzinfo is None:
+            seen = seen.replace(tzinfo=timezone.utc)
+        seconds = (datetime.now(timezone.utc) - seen.astimezone(timezone.utc)).total_seconds()
+    except ValueError:
+        return "Inactive"
+    if seconds <= 180:
+        return "Online now"
+    if seconds <= 86400:
+        return "Active today"
+    if seconds <= 604800:
+        return "Away"
+    return "Inactive"
+
+
 def build_student_snapshot(account: Dict[str, Any], services) -> Dict[str, Any]:
     student_id = account["id"]
     profile = account.get("profile") or {}
@@ -83,8 +102,10 @@ def build_student_snapshot(account: Dict[str, Any], services) -> Dict[str, Any]:
             if name and name not in attachment_names:
                 attachment_names.append(name)
 
+    usage = account.get("activity") or {}
     latest_activity = _latest_timestamp([
         account.get("created_at"),
+        usage.get("last_seen"),
         *[item.get("updated_at") for item in chats],
         *[item.get("updated_at") for item in revisions],
         *[item.get("updated_at") for item in tests],
@@ -116,6 +137,12 @@ def build_student_snapshot(account: Dict[str, Any], services) -> Dict[str, Any]:
         "joined_at": account.get("created_at", ""),
         "last_activity": latest_activity,
         "standing": standing,
+        "usage": {
+            "total_active_seconds": int(usage.get("total_active_seconds") or 0),
+            "last_seen": usage.get("last_seen") or "",
+            "status": _engagement_status(usage.get("last_seen") or ""),
+            "unread_notifications": int(usage.get("unread_notifications") or 0),
+        },
         "progress": {
             "topics": learner.get("topics_count", len(topics)),
             "topic_names": topics,
@@ -163,6 +190,9 @@ def build_admin_overview(accounts: List[Dict[str, Any]], service_factory) -> Dic
             "needs_attention": sum(1 for student in students if student["standing"] == "Needs attention"),
             "tests_completed": sum(student["progress"]["completed_tests"] for student in students),
             "topics_explored": sum(student["progress"]["topics"] for student in students),
+            "total_active_seconds": sum(student["usage"]["total_active_seconds"] for student in students),
+            "active_today": sum(1 for student in students if student["usage"]["status"] in {"Online now", "Active today"}),
+            "pending_reminders": sum(student["usage"]["unread_notifications"] for student in students),
         },
         "students": students,
         "generated_at": datetime.now().astimezone().isoformat(),

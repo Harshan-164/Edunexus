@@ -2,6 +2,7 @@ import json
 from pydantic import ValidationError
 from backend.agents.llm_utils import create_chat_completion
 from backend.models.schemas import RemediationResponse, DiagnosisResponse
+from backend.learning.languages import build_language_prompt
 
 class RemediationAgent:
     def __init__(self, llm):
@@ -41,7 +42,8 @@ class RemediationAgent:
             diagnosis=diag_obj,
             learner_context=kwargs.get("learner_context"),
             previous_intervention=kwargs.get("previous_intervention"),
-            adaptive_strategy=kwargs.get("adaptive_strategy")
+            adaptive_strategy=kwargs.get("adaptive_strategy"),
+            output_language=kwargs.get("output_language", "auto"),
         )
 
     def generate_remediation(
@@ -51,7 +53,8 @@ class RemediationAgent:
         diagnosis: getattr(DiagnosisResponse, "__typing_unpacked__", object),
         learner_context: str = None,
         previous_intervention: str = None,
-        adaptive_strategy: str = None
+        adaptive_strategy: str = None,
+        output_language: str = "auto",
     ) -> RemediationResponse:
         """
         Creates a focused learning intervention targeting a specifically diagnosed misconception.
@@ -84,6 +87,7 @@ class RemediationAgent:
             "5. Include a small, relevant code/conceptual example.\n"
             "6. Include a short 'check your understanding' question at the end.\n\n"
         )
+        system_prompt += build_language_prompt(output_language)
         
         if learner_context or previous_intervention or adaptive_strategy:
             system_prompt += "PERSONALIZATION & ADAPTATION INSTRUCTIONS:\n"

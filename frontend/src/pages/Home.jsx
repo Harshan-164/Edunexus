@@ -16,7 +16,10 @@ import {
   Check,
   Quote,
   UserCheck,
-  Flame
+  Flame,
+  Award,
+  Trophy,
+  Zap
 } from 'lucide-react';
 
 const MODES = [
@@ -57,12 +60,29 @@ const MOTIVATIONAL_QUOTES = [
   { text: "Focus on progress, not perfection. Today’s effort is tomorrow’s intuition.", author: "Mastery Heuristic" },
   { text: "The mind is not a vessel to be filled, but a fire to be kindled.", author: "Plutarch" },
   { text: "Success is the sum of small efforts repeated day in and day out.", author: "Robert Collier" },
-  { text: "Learning is a marathon of curiosity. Take it one concept at a time.", author: "EduNexus Philosophy" },
+  { text: "Learning is a marathon of curiosity. Take it one concept at a time.", author: "Nexora Philosophy" },
   { text: "Your potential expands every time you embrace a difficult challenge.", author: "Carol Dweck" },
   { text: "Believe in the process. The real breakthrough happens right after the struggle.", author: "Neuroscience of Learning" },
 ];
 
-export default function Home({ setMode, studentProfile, onSaveProfile }) {
+export default function Home({ setMode, studentProfile, learnerSummary, onOpenProfile, onSaveProfile }) {
+  const streaks = learnerSummary?.streaks || {
+    current_streak: 0,
+    best_streak: 0,
+    today_studied: false,
+    streak_message: 'Start your daily study streak by completing a session today!'
+  };
+
+  const rewards = learnerSummary?.rewards || {
+    xp: 0,
+    level: 1,
+    level_title: 'Novice Learner',
+    xp_in_level: 0,
+    next_level_xp: 300,
+    badges: [],
+    unlocked_count: 0,
+    total_badges: 10,
+  };
   // Determine time of day & greeting
   const timeDetails = useMemo(() => {
     const hour = new Date().getHours();
@@ -217,7 +237,7 @@ export default function Home({ setMode, studentProfile, onSaveProfile }) {
           </div>
 
           <p className="hero-lead" style={{ marginTop: '0', maxWidth: '640px' }}>
-            EduNexus adapts to how you learn—helping you understand concepts, repair knowledge gaps, and build lasting mastery.
+            Nexora adapts to how you learn—helping you understand concepts, repair knowledge gaps, and build lasting mastery.
           </p>
 
           {/* Start learning & Check my knowledge buttons */}
@@ -234,6 +254,271 @@ export default function Home({ setMode, studentProfile, onSaveProfile }) {
             <span><ShieldCheck size={16} /> Grounded in your material</span>
             <span><BrainCircuit size={16} /> Adapts to your progress</span>
           </div>
+        </div>
+      </section>
+
+      {/* 2. STUDENT STREAKS & REWARDS HUB */}
+      <section className="student-rewards-hub" aria-label="Student streaks and rewards" style={{
+        marginTop: '-24px',
+        marginBottom: '50px',
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(310px, 1fr))',
+        gap: '20px'
+      }}>
+        {/* Streak Card */}
+        <div style={{
+          background: 'linear-gradient(135deg, rgba(15, 27, 44, 0.95) 0%, rgba(30, 20, 35, 0.95) 100%)',
+          border: '1px solid rgba(249, 115, 22, 0.32)',
+          borderRadius: '16px',
+          padding: '22px',
+          boxShadow: '0 12px 32px rgba(0, 0, 0, 0.35), 0 0 20px rgba(249, 115, 22, 0.08)',
+          position: 'relative',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between'
+        }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+              <span style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                color: '#fb923c',
+                fontSize: '0.74rem',
+                fontWeight: 750,
+                textTransform: 'uppercase',
+                letterSpacing: '0.06em'
+              }}>
+                <Flame size={16} color="#f97316" fill={streaks.current_streak > 0 ? '#f97316' : 'none'} />
+                Daily Study Streak
+              </span>
+              <span style={{
+                fontSize: '0.72rem',
+                fontWeight: 650,
+                color: streaks.today_studied ? '#34d399' : '#fbbf24',
+                background: streaks.today_studied ? 'rgba(52, 211, 153, 0.12)' : 'rgba(251, 191, 36, 0.12)',
+                border: streaks.today_studied ? '1px solid rgba(52, 211, 153, 0.25)' : '1px solid rgba(251, 191, 36, 0.25)',
+                padding: '2px 9px',
+                borderRadius: '999px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}>
+                {streaks.today_studied ? 'Completed today ✓' : 'Session pending ⏳'}
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '6px' }}>
+              <span style={{ fontSize: '2.5rem', fontWeight: 850, color: '#f8fafc', lineHeight: 1 }}>
+                {streaks.current_streak}
+              </span>
+              <span style={{ fontSize: '1.1rem', fontWeight: 750, color: '#fb923c' }}>
+                {streaks.current_streak === 1 ? 'Day Streak' : 'Days Streak'}
+              </span>
+              <span style={{ marginLeft: 'auto', fontSize: '0.76rem', color: '#94a3b8' }}>
+                Record: <strong style={{ color: '#f8fafc' }}>{streaks.best_streak}d</strong>
+              </span>
+            </div>
+
+            <p style={{ margin: '8px 0 0', fontSize: '0.8rem', color: '#94a3b8', lineHeight: 1.45 }}>
+              {streaks.streak_message}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => onOpenProfile && onOpenProfile('rewards')}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#fb923c',
+              fontSize: '0.78rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: 0,
+              marginTop: '16px',
+              textAlign: 'left'
+            }}
+          >
+            View streak history & badges <ArrowRight size={14} />
+          </button>
+        </div>
+
+        {/* Level & XP Card */}
+        <div style={{
+          background: 'linear-gradient(135deg, rgba(15, 27, 44, 0.95) 0%, rgba(28, 20, 52, 0.95) 100%)',
+          border: '1px solid rgba(168, 85, 247, 0.32)',
+          borderRadius: '16px',
+          padding: '22px',
+          boxShadow: '0 12px 32px rgba(0, 0, 0, 0.35), 0 0 20px rgba(168, 85, 247, 0.08)',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between'
+        }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+              <span style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                color: '#c084fc',
+                fontSize: '0.74rem',
+                fontWeight: 750,
+                textTransform: 'uppercase',
+                letterSpacing: '0.06em'
+              }}>
+                <Zap size={16} color="#c084fc" />
+                XP & Mastery Level
+              </span>
+              <span style={{
+                fontSize: '0.74rem',
+                fontWeight: 750,
+                color: '#f8fafc',
+                background: 'rgba(168, 85, 247, 0.2)',
+                border: '1px solid rgba(168, 85, 247, 0.35)',
+                padding: '2px 8px',
+                borderRadius: '6px'
+              }}>
+                {rewards.xp} Total XP
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+              <span style={{
+                background: 'linear-gradient(135deg, #a855f7, #6366f1)',
+                color: '#ffffff',
+                fontSize: '0.78rem',
+                fontWeight: 800,
+                padding: '3px 8px',
+                borderRadius: '6px'
+              }}>
+                LVL {rewards.level}
+              </span>
+              <strong style={{ fontSize: '1.05rem', color: '#f8fafc' }}>
+                {rewards.level_title}
+              </strong>
+            </div>
+
+            <div style={{
+              height: '7px',
+              borderRadius: '999px',
+              background: 'rgba(255, 255, 255, 0.08)',
+              overflow: 'hidden',
+              margin: '12px 0 6px'
+            }}>
+              <div style={{
+                height: '100%',
+                width: `${Math.min(100, Math.round((rewards.xp_in_level / rewards.next_level_xp) * 100))}%`,
+                background: 'linear-gradient(90deg, #a855f7, #ec4899)',
+                borderRadius: 'inherit'
+              }} />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: '#94a3b8' }}>
+              <span>{rewards.xp_in_level} / {rewards.next_level_xp} XP</span>
+              <span>{rewards.next_level_xp - rewards.xp_in_level} XP to Level {rewards.level + 1}</span>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '12px', marginTop: '14px', paddingTop: '10px', borderTop: '1px solid rgba(255, 255, 255, 0.06)', fontSize: '0.72rem', color: '#94a3b8' }}>
+            <span>Tests: <strong style={{ color: '#e2e8f0' }}>+100 XP</strong></span>
+            <span>Revisions: <strong style={{ color: '#e2e8f0' }}>+60 XP</strong></span>
+            <span>Mastery: <strong style={{ color: '#e2e8f0' }}>+150 XP</strong></span>
+          </div>
+        </div>
+
+        {/* Milestone Badges Showcase */}
+        <div style={{
+          background: 'linear-gradient(135deg, rgba(15, 27, 44, 0.95) 0%, rgba(20, 38, 60, 0.95) 100%)',
+          border: '1px solid rgba(45, 212, 191, 0.32)',
+          borderRadius: '16px',
+          padding: '22px',
+          boxShadow: '0 12px 32px rgba(0, 0, 0, 0.35), 0 0 20px rgba(45, 212, 191, 0.08)',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between'
+        }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+              <span style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                color: '#5eead4',
+                fontSize: '0.74rem',
+                fontWeight: 750,
+                textTransform: 'uppercase',
+                letterSpacing: '0.06em'
+              }}>
+                <Trophy size={16} color="#5eead4" />
+                Badge Rewards
+              </span>
+              <span style={{
+                fontSize: '0.72rem',
+                fontWeight: 700,
+                color: '#2dd4bf',
+                background: 'rgba(45, 212, 191, 0.12)',
+                border: '1px solid rgba(45, 212, 191, 0.25)',
+                padding: '2px 8px',
+                borderRadius: '999px'
+              }}>
+                {rewards.unlocked_count} / {rewards.total_badges} Unlocked
+              </span>
+            </div>
+
+            <p style={{ margin: '0 0 12px', fontSize: '0.8rem', color: '#94a3b8', lineHeight: 1.45 }}>
+              Earn recognition across study consistency, concept mastery, accuracy, and multilingual learning.
+            </p>
+
+            {/* Badges preview row */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              {(rewards.badges || []).slice(0, 5).map((b) => (
+                <div
+                  key={b.id}
+                  title={`${b.title} (${b.tier}): ${b.unlocked ? 'Unlocked!' : 'In Progress'}`}
+                  style={{
+                    width: '36px',
+                    height: '36px',
+                    borderRadius: '10px',
+                    background: b.unlocked ? 'linear-gradient(135deg, rgba(13, 148, 136, 0.3), rgba(2, 132, 199, 0.3))' : 'rgba(255, 255, 255, 0.04)',
+                    border: b.unlocked ? '1px solid rgba(45, 212, 191, 0.45)' : '1px solid rgba(255, 255, 255, 0.08)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '1rem',
+                    cursor: 'pointer'
+                  }}
+                  onClick={() => onOpenProfile && onOpenProfile('rewards')}
+                >
+                  {b.unlocked ? '🏅' : '🔒'}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => onOpenProfile && onOpenProfile('rewards')}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#5eead4',
+              fontSize: '0.78rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: 0,
+              marginTop: '16px',
+              textAlign: 'left'
+            }}
+          >
+            Explore all badges & rewards <ArrowRight size={14} />
+          </button>
         </div>
       </section>
 

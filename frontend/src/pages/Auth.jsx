@@ -56,7 +56,7 @@ export default function Auth({ onAuthenticated }) {
   return (
     <main className="auth-page">
       <section className="auth-brand-panel">
-        <div className="auth-brand"><span><GraduationCap size={24} /></span><div><strong>EduNexus</strong><small>Adaptive learning workspace</small></div></div>
+        <div className="auth-brand"><span><GraduationCap size={24} /></span><div><strong>Nexora</strong><small>Adaptive learning workspace</small></div></div>
         <div className="auth-promise">
           <span className="auth-eyebrow"><BookOpen size={14} /> Private learning profile</span>
           <h1>Your learning journey,<br /><em>separated and remembered.</em></h1>
@@ -95,7 +95,7 @@ export default function Auth({ onAuthenticated }) {
                   <label><span>Year or stage</span><input maxLength="60" value={register.year_of_study} onChange={(event) => setRegistration('year_of_study', event.target.value)} placeholder="2nd Year" /></label>
                 </div>
                 <label><span>Course or field of study</span><input maxLength="120" value={register.study} onChange={(event) => setRegistration('study', event.target.value)} placeholder="Computer Science" /></label>
-                <label><span>Primary learning goal</span><textarea rows="2" maxLength="500" value={register.learning_goal} onChange={(event) => setRegistration('learning_goal', event.target.value)} placeholder="What would you like EduNexus to help you achieve?" /></label>
+                <label><span>Primary learning goal</span><textarea rows="2" maxLength="500" value={register.learning_goal} onChange={(event) => setRegistration('learning_goal', event.target.value)} placeholder="What would you like Nexora to help you achieve?" /></label>
               </>
             )}
 
@@ -105,7 +105,7 @@ export default function Auth({ onAuthenticated }) {
 
             <button className="auth-submit" disabled={submitting}>{submitting ? <><Loader2 className="spin" size={18} /> Please wait…</> : <>{mode === 'login' ? 'Sign in' : 'Create account'} <ArrowRight size={18} /></>}</button>
           </form>
-          <p className="auth-local-note">Accounts and learning data are stored locally on this EduNexus installation.</p>
+          <p className="auth-local-note">Accounts and learning data are stored locally on this Nexora installation.</p>
         </div>
       </section>
     </main>

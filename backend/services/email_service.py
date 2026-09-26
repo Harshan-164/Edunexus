@@ -30,7 +30,7 @@ def _get_or_create_ethereal_account() -> Optional[Dict[str, Any]]:
     try:
         res = requests.post(
             "https://api.nodemailer.com/user",
-            json={"requestor": "EduNexus", "version": "1.0"},
+            json={"requestor": "Nexora", "version": "1.0"},
             timeout=8
         )
         if res.status_code == 200:
@@ -68,7 +68,7 @@ def send_study_reminder(
 
     mode_label = "Revision Session" if mode.lower() == "revise" else "Diagnostic Test"
     times_formatted = ", ".join(time_slots) if isinstance(time_slots, list) else str(time_slots)
-    subject = f"EduNexus Reminder: Upcoming {mode_label} on '{topic}' at {times_formatted}"
+    subject = f"Nexora Reminder: Upcoming {mode_label} on '{topic}' at {times_formatted}"
 
     html_content = f"""
     <!DOCTYPE html>
@@ -93,7 +93,7 @@ def send_study_reminder(
       <div class="card">
         <div class="badge">{mode_label} Alert</div>
         <h2>Hello {student_name or 'Learner'},</h2>
-        <p>This is your friendly reminder from <strong>EduNexus</strong> about your scheduled learning activity.</p>
+        <p>This is your friendly reminder from <strong>Nexora</strong> about your scheduled learning activity.</p>
         
         <div class="info-box">
           <div class="info-row">
@@ -115,10 +115,10 @@ def send_study_reminder(
           {f'<div class="info-row"><span class="info-label">Note:</span><span class="info-val">{note}</span></div>' if note else ''}
         </div>
 
-        <p>Taking consistent study breaks and verifying your recall will maximize retention. Log into EduNexus when you are ready to begin!</p>
+        <p>Taking consistent study breaks and verifying your recall will maximize retention. Log into Nexora when you are ready to begin!</p>
         
         <div class="footer">
-          EduNexus Adaptive Learning Engine &copy; 2026
+          Nexora Adaptive Learning Engine &copy; 2026
         </div>
       </div>
     </body>
@@ -126,7 +126,7 @@ def send_study_reminder(
     """
 
     plain_content = f"""
-EduNexus Reminder: Upcoming {mode_label} on '{topic}'
+Nexora Reminder: Upcoming {mode_label} on '{topic}'
 Hello {student_name or 'Learner'},
 
 This is your reminder that you have a scheduled {mode_label} session on '{topic}'.
@@ -134,7 +134,7 @@ This is your reminder that you have a scheduled {mode_label} session on '{topic}
 - Time(s): {times_formatted}
 {f'- Note: {note}' if note else ''}
 
-Log in to EduNexus to begin your session and strengthen your mastery!
+Log in to Nexora to begin your session and strengthen your mastery!
     """.strip()
 
     # 1. Try Custom Configured SMTP (e.g. Gmail App Password, Brevo, SendGrid, etc.)
@@ -142,7 +142,7 @@ Log in to EduNexus to begin your session and strengthen your mastery!
     smtp_port = int(os.getenv("SMTP_PORT", "587"))
     smtp_user = os.getenv("SMTP_USER")
     smtp_pass = os.getenv("SMTP_PASS")
-    from_email = os.getenv("SMTP_FROM", smtp_user or "reminders@edunexus.ai")
+    from_email = os.getenv("SMTP_FROM", smtp_user or "reminders@nexora.ai")
 
     if smtp_host and smtp_user and smtp_pass:
         try:
@@ -187,7 +187,7 @@ Log in to EduNexus to begin your session and strengthen your mastery!
 
             msg = MIMEMultipart("alternative")
             msg["Subject"] = subject
-            msg["From"] = f"EduNexus Study Coach <{e_user}>"
+            msg["From"] = f"Nexora Study Coach <{e_user}>"
             msg["To"] = to_email
 
             msg.attach(MIMEText(plain_content, "plain"))

@@ -2,12 +2,18 @@
 
 from typing import Any, Optional
 
+from backend.learning.languages import build_language_prompt
+
 
 def build_learn_preference_prompt(preferences: Optional[Any], response_mode: str) -> str:
     if not preferences:
         return ""
 
     lines = []
+    # Older callers/tests may pass the pre-multilingual preference shape. Keep
+    # that behavior unchanged; API models now always provide this field.
+    language_value = getattr(preferences, "output_language", None)
+    language_prompt = build_language_prompt(language_value) if language_value is not None else ""
     if response_mode == "text":
         style = preferences.chat_style.lower().strip()
         if style == "crisp":
@@ -45,14 +51,15 @@ def build_learn_preference_prompt(preferences: Optional[Any], response_mode: str
             lines.append("Make the deck detailed with explanations, examples, and formulas where relevant while keeping each card focused.")
         custom = preferences.flashcard_custom_instruction.strip()[:2000]
     else:
-        return ""
+        return language_prompt
 
     if custom:
         lines.append(f"Additional learner instruction for this response format: {custom}")
-    if not lines:
-        return ""
-    return (
+    preference_prompt = ""
+    if lines:
+        preference_prompt = (
         "\nLearn-section response preferences:\n- " + "\n- ".join(lines) +
         "\nApply these preferences only to presentation and depth. They must not override chat-session isolation, "
         "document relevance rules, safety requirements, or the required output schema.\n"
-    )
+        )
+    return language_prompt + preference_prompt

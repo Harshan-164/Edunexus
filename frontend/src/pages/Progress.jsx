@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   BarChart3, 
   CheckCircle2, 
@@ -19,8 +19,13 @@ import {
   ArrowRight
 } from 'lucide-react';
 import FormattedText from '../components/FormattedText';
+import LanguageSelector, { loadOutputLanguage, saveOutputLanguage } from '../components/LanguageSelector';
 
 export default function Progress({ studentId, studentProfile, setMode }) {
+  const pageRef = useRef(null);
+  const translatedNodesRef = useRef(new Map());
+  const translationRequestRef = useRef(0);
+  const [outputLanguage, setOutputLanguage] = useState(() => loadOutputLanguage(studentId));
   const [data, setData] = useState(null);
   const [hasReport, setHasReport] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -40,6 +45,70 @@ export default function Progress({ studentId, studentProfile, setMode }) {
   useEffect(() => {
     fetchLatestReport();
   }, [studentId]);
+
+  useEffect(() => {
+    if (loading) return undefined;
+    const timer = setTimeout(() => localizeProgressPage(), 1500);
+    return () => clearTimeout(timer);
+  }, [outputLanguage, data, loading]);
+
+  const collectLocalizableNodes = () => {
+    if (!pageRef.current) return [];
+    const walker = document.createTreeWalker(pageRef.current, NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    let node;
+    while ((node = walker.nextNode())) {
+      const parentTag = node.parentElement?.tagName;
+      if (['STYLE', 'SCRIPT', 'SELECT', 'OPTION'].includes(parentTag)) continue;
+      const current = node.nodeValue || '';
+      const record = translatedNodesRef.current.get(node);
+      const source = record && current === record.translated ? record.original : current;
+      if (record && current !== record.translated && current !== record.original) {
+        translatedNodesRef.current.delete(node);
+      }
+      const trimmed = source.trim();
+      if (trimmed.length > 1 && /[A-Za-z\u0900-\u0D7F]/u.test(trimmed)) {
+        nodes.push({ node, source, trimmed });
+      }
+    }
+    return nodes;
+  };
+
+  const localizeProgressPage = async () => {
+    const nodes = collectLocalizableNodes();
+    if (!nodes.length) return;
+    const reportLanguage = data?.output_language || 'auto';
+    if (outputLanguage === 'auto' || outputLanguage === 'english' || reportLanguage !== outputLanguage) {
+      nodes.forEach(({ node }) => {
+        const record = translatedNodesRef.current.get(node);
+        if (record && node.nodeValue === record.translated) node.nodeValue = record.original;
+      });
+      translatedNodesRef.current.clear();
+      return;
+    }
+
+    const uniqueStrings = [...new Set(nodes.map(({ trimmed }) => trimmed))].slice(0, 120);
+    const requestId = ++translationRequestRef.current;
+    try {
+      const res = await fetch('/api/progress/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ output_language: outputLanguage, strings: uniqueStrings }),
+      });
+      if (!res.ok) throw new Error('Progress translation failed');
+      const result = await res.json();
+      if (requestId !== translationRequestRef.current) return;
+      const translations = new Map(uniqueStrings.map((source, index) => [source, result.translations?.[index] || source]));
+      nodes.forEach(({ node, source, trimmed }) => {
+        const translated = translations.get(trimmed) || trimmed;
+        const localizedValue = source.replace(trimmed, translated);
+        translatedNodesRef.current.set(node, { original: source, translated: localizedValue });
+        node.nodeValue = localizedValue;
+      });
+    } catch (err) {
+      console.error('Failed to translate Progress interface:', err);
+    }
+  };
 
   const fetchLatestReport = async () => {
     try {
@@ -64,7 +133,7 @@ export default function Progress({ studentId, studentProfile, setMode }) {
   };
 
   // Generate latest report on demand
-  const handleGenerateLatestReport = async () => {
+  const handleGenerateLatestReport = async (requestedLanguage = outputLanguage) => {
     try {
       setGenerating(true);
       setGeneratingStage(0);
@@ -76,6 +145,8 @@ export default function Progress({ studentId, studentProfile, setMode }) {
 
       const res = await fetch(`/api/progress/generate/${studentId}`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ output_language: requestedLanguage }),
       });
 
       clearTimeout(stageTimer1);
@@ -96,6 +167,13 @@ export default function Progress({ studentId, studentProfile, setMode }) {
     } finally {
       setGenerating(false);
     }
+  };
+
+  const changeOutputLanguage = (language) => {
+    translationRequestRef.current += 1;
+    setOutputLanguage(language);
+    saveOutputLanguage(studentId, language);
+    handleGenerateLatestReport(language);
   };
 
   const handleDeleteSchedule = async (scheduleId) => {
@@ -123,6 +201,7 @@ export default function Progress({ studentId, studentProfile, setMode }) {
   const testHistory = data?.test_history || [];
   const schedules = data?.scheduled_timetable || data?.schedules || [];
   const feedback = data?.feedback || data?.diagnostic_feedback || '';
+  const aiSummary = data?.ai_summary || null;
   const createdAt = data?.created_at ? new Date(data.created_at).toLocaleString() : '';
 
   // Actionable focus areas: from API or synthesized from topicReports & testHistory
@@ -224,7 +303,7 @@ export default function Progress({ studentId, studentProfile, setMode }) {
   }
 
   return (
-    <div className="page-shell" style={{ maxWidth: '1200px', margin: '0 auto', padding: '24px 20px 60px' }}>
+    <div ref={pageRef} className="page-shell" lang={outputLanguage === 'auto' ? 'en' : outputLanguage} style={{ maxWidth: '1200px', margin: '0 auto', padding: '24px 20px 60px' }}>
       <style>{`
         @keyframes spin { 100% { transform: rotate(360deg); } }
         @keyframes pulseGlow {
@@ -260,13 +339,14 @@ export default function Progress({ studentId, studentProfile, setMode }) {
 
         {/* Generate Latest Report Button */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <LanguageSelector compact value={outputLanguage} onChange={changeOutputLanguage} />
           {hasReport && createdAt && (
             <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
               Report: <strong style={{ color: '#94a3b8' }}>{createdAt}</strong>
             </span>
           )}
           <button
-            onClick={handleGenerateLatestReport}
+            onClick={() => handleGenerateLatestReport()}
             disabled={generating}
             style={{
               display: 'inline-flex',
@@ -391,12 +471,12 @@ export default function Progress({ studentId, studentProfile, setMode }) {
               Generate Your Cognitive Progress Report
             </h2>
             <p style={{ fontSize: '0.9rem', color: '#94a3b8', lineHeight: 1.6, margin: 0 }}>
-              EduNexus analyzes all your Learn chat conversations, flashcard drill sessions, test scores, and hesitation patterns on demand to synthesize a high-value diagnostic report.
+              Nexora analyzes all your Learn chat conversations, flashcard drill sessions, test scores, and hesitation patterns on demand to synthesize a high-value diagnostic report.
             </p>
           </div>
 
           <button
-            onClick={handleGenerateLatestReport}
+            onClick={() => handleGenerateLatestReport()}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -708,9 +788,25 @@ export default function Progress({ studentId, studentProfile, setMode }) {
                 fontSize: '0.88rem',
                 lineHeight: 1.6,
                 overflowY: 'auto',
-                maxHeight: '260px'
+                maxHeight: '420px'
               }}>
-                <FormattedText text={feedback || 'No diagnostic feedback available yet.'} />
+                {aiSummary ? (
+                  <div className="progress-ai-summary">
+                    <h4>{aiSummary.headline || 'Your learning progress at a glance'}</h4>
+                    <FormattedText content={aiSummary.overview || feedback || 'No diagnostic feedback available yet.'} />
+                    {aiSummary.strengths?.length > 0 && (
+                      <section><strong>Strengths</strong><ul>{aiSummary.strengths.map((item, index) => <li key={`strength-${index}`}>{item}</li>)}</ul></section>
+                    )}
+                    {aiSummary.focus_areas?.length > 0 && (
+                      <section><strong>Priority focus</strong><ul>{aiSummary.focus_areas.map((item, index) => <li key={`focus-${index}`}>{item}</li>)}</ul></section>
+                    )}
+                    {aiSummary.next_steps?.length > 0 && (
+                      <section><strong>Recommended next steps</strong><ol>{aiSummary.next_steps.map((item, index) => <li key={`step-${index}`}>{item}</li>)}</ol></section>
+                    )}
+                  </div>
+                ) : (
+                  <FormattedText content={feedback || 'No diagnostic feedback available yet.'} />
+                )}
               </div>
 
               <div style={{ display: 'flex', gap: '10px', marginTop: '14px' }}>

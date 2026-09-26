@@ -19,6 +19,7 @@ import {
 import FlashcardDeck from '../components/FlashcardDeck';
 import FormattedText from '../components/FormattedText';
 import ScheduleModal from '../components/ScheduleModal';
+import LanguageSelector, { loadOutputLanguage, saveOutputLanguage } from '../components/LanguageSelector';
 
 function RevisionThinkingIndicator() {
   const [stage, setStage] = useState(0);
@@ -53,7 +54,7 @@ function RevisionThinkingIndicator() {
         </span>
       </div>
       <p style={{ fontSize: '0.82rem', color: '#94a3b8', maxWidth: '420px', margin: '0 auto' }}>
-        EduNexus is evaluating your chat interaction patterns and test history to build and store your personalized revision session.
+        Nexora is evaluating your chat interaction patterns and test history to build and store your personalized revision session.
       </p>
     </div>
   );
@@ -75,6 +76,7 @@ function formatRelativeTime(dateString) {
 }
 
 export default function Revise({ studentId, studentProfile, onRefreshProfile }) {
+  const [outputLanguage, setOutputLanguage] = useState(() => loadOutputLanguage(studentId));
   const [topics, setTopics] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedTopic, setSelectedTopic] = useState(null);
@@ -165,7 +167,7 @@ export default function Revise({ studentId, studentProfile, onRefreshProfile }) 
       const res = await fetch('/api/revise/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ student_id: studentId, topic: topicName })
+        body: JSON.stringify({ student_id: studentId, topic: topicName, output_language: outputLanguage })
       });
       if (!res.ok) throw new Error('Revision generation failed');
       const savedSession = await res.json();
@@ -232,7 +234,8 @@ export default function Revise({ studentId, studentProfile, onRefreshProfile }) 
           topic: selectedTopic,
           answers: answers,
           questions: revisionData.questions,
-          session_id: revisionData.id
+          session_id: revisionData.id,
+          output_language: outputLanguage
         })
       });
       const data = await res.json();
@@ -282,6 +285,8 @@ export default function Revise({ studentId, studentProfile, onRefreshProfile }) 
             All revision sessions and flashcard decks are stored locally under their topic.
           </p>
         </div>
+
+        <LanguageSelector compact value={outputLanguage} onChange={(value) => { setOutputLanguage(value); saveOutputLanguage(studentId, value); }} />
 
         <button className="mode-schedule-button mode-schedule-button--revise"
           onClick={() => setShowScheduleModal(true)}

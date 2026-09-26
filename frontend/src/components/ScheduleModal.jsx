@@ -778,7 +778,7 @@ export default function ScheduleModal({
               </div>
               <p style={{ margin: 0, fontSize: '0.76rem', color: '#94a3b8', lineHeight: 1.5 }}>
                 1. Open <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer" style={{ color: '#38bdf8', textDecoration: 'underline' }}>Google App Passwords</a>.<br />
-                2. Type app name "EduNexus" and generate a 16-character code.<br />
+                2. Type app name "Nexora" and generate a 16-character code.<br />
                 3. Paste the code below and click "Save & Verify".
               </p>
 

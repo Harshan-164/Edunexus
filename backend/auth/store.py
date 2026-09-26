@@ -50,6 +50,27 @@ class AuthStore:
                     FOREIGN KEY(account_id) REFERENCES accounts(id) ON DELETE CASCADE
                 );
                 CREATE INDEX IF NOT EXISTS ix_auth_sessions_account ON auth_sessions(account_id);
+                CREATE TABLE IF NOT EXISTS account_activity (
+                    account_id TEXT PRIMARY KEY,
+                    total_active_seconds INTEGER NOT NULL DEFAULT 0,
+                    last_seen TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY(account_id) REFERENCES accounts(id) ON DELETE CASCADE
+                );
+                CREATE TABLE IF NOT EXISTS teacher_notifications (
+                    id TEXT PRIMARY KEY,
+                    student_id TEXT NOT NULL,
+                    action_type TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    message TEXT NOT NULL,
+                    created_by TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    read_at TEXT,
+                    FOREIGN KEY(student_id) REFERENCES accounts(id) ON DELETE CASCADE,
+                    FOREIGN KEY(created_by) REFERENCES accounts(id) ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS ix_teacher_notifications_student
+                    ON teacher_notifications(student_id, created_at DESC);
                 """
             )
             account_columns = {row[1] for row in connection.execute("PRAGMA table_info(accounts)").fetchall()}
@@ -188,12 +209,106 @@ class AuthStore:
                 ).fetchall()
             else:
                 rows = connection.execute("SELECT * FROM accounts ORDER BY created_at DESC").fetchall()
-        return [self._public_account(row) for row in rows]
+            accounts = [self._public_account(row) for row in rows]
+            for account in accounts:
+                activity = connection.execute(
+                    "SELECT total_active_seconds, last_seen FROM account_activity WHERE account_id = ?",
+                    (account["id"],),
+                ).fetchone()
+                unread = connection.execute(
+                    "SELECT COUNT(*) FROM teacher_notifications WHERE student_id = ? AND read_at IS NULL",
+                    (account["id"],),
+                ).fetchone()[0]
+                account["activity"] = {
+                    "total_active_seconds": int(activity["total_active_seconds"]) if activity else 0,
+                    "last_seen": activity["last_seen"] if activity else "",
+                    "unread_notifications": int(unread),
+                }
+        return accounts
 
     def get_account(self, account_id: str) -> Optional[Dict[str, Any]]:
         with self._connect() as connection:
             row = connection.execute("SELECT * FROM accounts WHERE id = ?", (account_id,)).fetchone()
         return self._public_account(row) if row else None
+
+    def record_activity(self, account_id: str, seconds: int = 60) -> Dict[str, Any]:
+        """Accumulate foreground usage while preventing stale clients from inflating time."""
+        safe_seconds = max(1, min(int(seconds), 120))
+        now = self._now().isoformat()
+        with self._connect() as connection:
+            connection.execute(
+                """INSERT INTO account_activity (account_id, total_active_seconds, last_seen, updated_at)
+                   VALUES (?, ?, ?, ?)
+                   ON CONFLICT(account_id) DO UPDATE SET
+                     total_active_seconds = total_active_seconds + excluded.total_active_seconds,
+                     last_seen = excluded.last_seen,
+                     updated_at = excluded.updated_at""",
+                (account_id, safe_seconds, now, now),
+            )
+            row = connection.execute(
+                "SELECT total_active_seconds, last_seen FROM account_activity WHERE account_id = ?",
+                (account_id,),
+            ).fetchone()
+        return {"total_active_seconds": int(row["total_active_seconds"]), "last_seen": row["last_seen"]}
+
+    def create_notification(
+        self,
+        student_id: str,
+        action_type: str,
+        title: str,
+        message: str,
+        created_by: str,
+    ) -> Dict[str, Any]:
+        action = str(action_type).strip().lower()
+        if action not in {"learn", "revise", "test"}:
+            raise ValueError("Reminder action must be Learn, Revise, or Test.")
+        clean_message = str(message).strip()[:500]
+        if not clean_message:
+            raise ValueError("Reminder message is required.")
+        notification_id = uuid.uuid4().hex
+        now = self._now().isoformat()
+        clean_title = str(title).strip()[:100] or f"Time to {action}"
+        with self._connect() as connection:
+            student = connection.execute(
+                "SELECT role FROM accounts WHERE id = ?", (student_id,)
+            ).fetchone()
+            if not student or student["role"] != "student":
+                raise ValueError("Student account not found.")
+            connection.execute(
+                """INSERT INTO teacher_notifications
+                   (id, student_id, action_type, title, message, created_by, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (notification_id, student_id, action, clean_title, clean_message, created_by, now),
+            )
+        return {
+            "id": notification_id, "student_id": student_id, "action_type": action,
+            "title": clean_title, "message": clean_message, "created_by": created_by,
+            "created_at": now, "read_at": None,
+        }
+
+    def list_notifications(self, student_id: str, unread_only: bool = False, limit: int = 30) -> list[Dict[str, Any]]:
+        query = """SELECT n.*, a.username AS sender_username
+                   FROM teacher_notifications n
+                   JOIN accounts a ON a.id = n.created_by
+                   WHERE n.student_id = ?"""
+        params: list[Any] = [student_id]
+        if unread_only:
+            query += " AND n.read_at IS NULL"
+        query += " ORDER BY n.created_at DESC LIMIT ?"
+        params.append(max(1, min(int(limit), 100)))
+        with self._connect() as connection:
+            rows = connection.execute(query, params).fetchall()
+        return [dict(row) for row in rows]
+
+    def mark_notification_read(self, notification_id: str, student_id: str) -> bool:
+        now = self._now().isoformat()
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """UPDATE teacher_notifications SET read_at = COALESCE(read_at, ?)
+                   WHERE id = ? AND student_id = ?""",
+                (now, notification_id, student_id),
+            )
+        return cursor.rowcount > 0
 
     @staticmethod
     def _sanitize_profile(profile: Dict[str, Any]) -> Dict[str, Any]:

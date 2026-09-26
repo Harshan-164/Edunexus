@@ -3,6 +3,7 @@ import logging
 import re
 from typing import Any, Dict, List, Optional
 from backend.media.lesson_media import normalize_flashcards, parse_json_response
+from backend.learning.languages import build_language_prompt, normalize_output_language
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +55,8 @@ class RevisionAgent:
         quiz_history: List[Dict[str, Any]],
         misconceptions: List[Dict[str, Any]],
         masteries: List[Dict[str, Any]],
-        learner_context_str: str = ""
+        learner_context_str: str = "",
+        output_language: str = "auto"
     ) -> Dict[str, Any]:
         """
         Adaptive agent loop for revision:
@@ -95,11 +97,13 @@ class RevisionAgent:
         learner_evidence = "\n".join(f"- {bp}" for bp in briefing_parts)
 
         # Unified Prompt: Generates Diagnosis, Targeted Lesson, Flashcards, and Verification Questions in 1 resilient round-trip
+        language_prompt = build_language_prompt(output_language)
         prompt = (
             f"You are the EduNexus Adaptive Revision Specialist.\n"
             f"Topic: {topic}\n\n"
             f"LEARNER WEAKNESS BRIEFING (From Chat & Tests):\n"
             f"{learner_evidence}\n\n"
+            f"{language_prompt}\n"
             "Produce a complete, personalized revision bundle. Address the student's exact confusion points and test pitfalls.\n"
             "Return ONLY a valid JSON object matching this exact schema (no text outside JSON):\n"
             "{\n"
@@ -187,6 +191,7 @@ class RevisionAgent:
 
             return {
                 "topic": topic,
+                "output_language": normalize_output_language(output_language),
                 "revision_lesson": lesson_text,
                 "diagnosis": diagnosis,
                 "flashcards": flashcards,

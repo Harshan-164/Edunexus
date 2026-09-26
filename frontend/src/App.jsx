@@ -10,6 +10,7 @@ import Progress from './pages/Progress';
 import Admin from './pages/Admin';
 import ProfileModal from './components/ProfileModal';
 import MascotAlert from './components/MascotAlert';
+import StudentNotificationCenter from './components/StudentNotificationCenter';
 
 export default function App() {
   const [currentMode, setMode] = useState('home');
@@ -17,7 +18,14 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [learnerSummary, setLearnerSummary] = useState(null);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [profileModalTab, setProfileModalTab] = useState('profile');
+
+  const openProfileModal = (tab = 'profile') => {
+    setProfileModalTab(tab);
+    setIsProfileModalOpen(true);
+  };
   const [mascotAlert, setMascotAlert] = useState({ isOpen: false, type: 'pomodoro', breakMinutes: 5 });
+  const [notifications, setNotifications] = useState([]);
   const studySecondsRef = useRef(0);
   const hydrationSecondsRef = useRef(0);
 
@@ -28,9 +36,9 @@ export default function App() {
   const isAdmin = account?.role === 'admin' || account?.username?.toLowerCase() === 'admin';
 
   useEffect(() => {
-    const theme = studentProfile?.theme || localStorage.getItem('edunexus:theme') || 'nexus';
+    const theme = studentProfile?.theme || localStorage.getItem('nexora:theme') || localStorage.getItem('edunexus:theme') || 'nexus';
     document.documentElement.dataset.theme = theme;
-    localStorage.setItem('edunexus:theme', theme);
+    localStorage.setItem('nexora:theme', theme);
   }, [studentProfile?.theme]);
 
   useEffect(() => {
@@ -44,6 +52,32 @@ export default function App() {
   useEffect(() => {
     if (studentId && !isAdmin) fetchLearnerSummary();
     else setLearnerSummary(null);
+  }, [studentId, isAdmin]);
+
+  useEffect(() => {
+    if (!account) return;
+    const heartbeat = (seconds = 60) => {
+      if (document.visibilityState === 'visible') {
+        fetch('/api/activity/heartbeat', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ seconds }),
+        }).catch(() => null);
+      }
+    };
+    heartbeat(1);
+    const interval = setInterval(heartbeat, 60000);
+    return () => clearInterval(interval);
+  }, [account?.id]);
+
+  useEffect(() => {
+    if (!studentId || isAdmin) { setNotifications([]); return; }
+    const loadNotifications = () => fetch('/api/notifications')
+      .then((response) => response.ok ? response.json() : { notifications: [] })
+      .then((payload) => setNotifications(payload.notifications || []))
+      .catch(() => null);
+    loadNotifications();
+    const interval = setInterval(loadNotifications, 60000);
+    return () => clearInterval(interval);
   }, [studentId, isAdmin]);
 
   useEffect(() => {
@@ -87,7 +121,7 @@ export default function App() {
     const previousTheme = studentProfile?.theme || 'nexus';
     const nextTheme = updatedProfile.theme || 'nexus';
     document.documentElement.dataset.theme = nextTheme;
-    localStorage.setItem('edunexus:theme', nextTheme);
+    localStorage.setItem('nexora:theme', nextTheme);
     try {
       const response = await fetch('/api/auth/profile', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
@@ -98,7 +132,7 @@ export default function App() {
       setAccount(data.account);
     } catch (error) {
       document.documentElement.dataset.theme = previousTheme;
-      localStorage.setItem('edunexus:theme', previousTheme);
+      localStorage.setItem('nexora:theme', previousTheme);
       throw error;
     }
   };
@@ -107,6 +141,7 @@ export default function App() {
     await fetch('/api/auth/logout', { method: 'POST' }).catch(() => null);
     setAccount(null);
     document.documentElement.dataset.theme = 'nexus';
+    localStorage.removeItem('nexora:theme');
     localStorage.removeItem('edunexus:theme');
     setLearnerSummary(null);
     setMode('home');
@@ -117,22 +152,28 @@ export default function App() {
     studySecondsRef.current = 0;
   };
 
-  if (authLoading) return <div className="auth-loading"><span className="brand-mark"><GraduationCap size={21} /></span><div className="generation-skeleton"><i /><i /><i /></div><strong>Opening EduNexus…</strong></div>;
+  const markNotificationRead = async (notificationId) => {
+    const response = await fetch(`/api/notifications/${notificationId}/read`, { method: 'POST' });
+    if (response.ok) setNotifications((items) => items.map((item) => item.id === notificationId ? { ...item, read_at: new Date().toISOString() } : item));
+  };
+
+  if (authLoading) return <div className="auth-loading"><span className="brand-mark"><GraduationCap size={21} /></span><div className="generation-skeleton"><i /><i /><i /></div><strong>Opening Nexora…</strong></div>;
   if (!account) return <Auth onAuthenticated={setAccount} />;
   if (isAdmin) return <Admin account={account} onLogout={handleLogout} />;
 
   return (
     <div className="app-shell">
-      <Navbar currentMode={currentMode} setMode={setMode} learnerSummary={learnerSummary} studentProfile={studentProfile} username={account.username} onOpenProfile={() => setIsProfileModalOpen(true)} onLogout={handleLogout} />
+      <Navbar currentMode={currentMode} setMode={setMode} learnerSummary={learnerSummary} studentProfile={studentProfile} username={account.username} onOpenProfile={openProfileModal} onLogout={handleLogout} />
       <main className="app-main"><div className="page-transition" key={currentMode}>
-        {currentMode === 'home' && <Home setMode={setMode} studentProfile={studentProfile} onSaveProfile={handleSaveStudentProfile} />}
+        {currentMode === 'home' && <Home setMode={setMode} studentProfile={studentProfile} learnerSummary={learnerSummary} onOpenProfile={openProfileModal} onSaveProfile={handleSaveStudentProfile} />}
         {currentMode === 'learn' && <Learn studentId={studentId} onRefreshProfile={fetchLearnerSummary} />}
         {currentMode === 'revise' && <Revise studentId={studentId} studentProfile={studentProfile} onRefreshProfile={fetchLearnerSummary} />}
         {currentMode === 'test' && <Test studentId={studentId} studentProfile={studentProfile} onRefreshProfile={fetchLearnerSummary} />}
         {currentMode === 'progress' && <Progress studentId={studentId} studentProfile={studentProfile} setMode={setMode} />}
       </div></main>
-      <ProfileModal isOpen={isProfileModalOpen} onClose={() => setIsProfileModalOpen(false)} studentProfile={studentProfile} onSaveProfile={handleSaveStudentProfile} />
+      <ProfileModal isOpen={isProfileModalOpen} onClose={() => setIsProfileModalOpen(false)} studentProfile={studentProfile} learnerSummary={learnerSummary} initialTab={profileModalTab} onSaveProfile={handleSaveStudentProfile} />
       <MascotAlert isOpen={mascotAlert.isOpen} type={mascotAlert.type} breakMinutes={mascotAlert.breakMinutes} onAccept={closeMascot} onDecline={closeMascot} />
+      <StudentNotificationCenter notifications={notifications} onRead={markNotificationRead} onNavigate={setMode} />
     </div>
   );
 }

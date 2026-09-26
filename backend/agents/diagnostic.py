@@ -4,6 +4,7 @@ from pydantic import ValidationError
 from backend.agents.llm_utils import create_chat_completion
 from backend.models.schemas import DiagnosticResponse, DiagnosisResponse
 from backend.tools.agent_tools import search_syllabus_rag, get_student_progress
+from backend.learning.languages import build_language_prompt
 
 class DiagnosticAndDiagnosisAgent:
     """
@@ -16,7 +17,7 @@ class DiagnosticAndDiagnosisAgent:
     def __init__(self, llm):
         self.llm = llm
 
-    def generate_questions(self, topic: str, syllabus_context: str, learner_context: str = None) -> DiagnosticResponse:
+    def generate_questions(self, topic: str, syllabus_context: str, learner_context: str = None, output_language: str = "auto") -> DiagnosticResponse:
         """
         Generates exactly 5 diagnostic questions based on the topic, syllabus context (if relevant), and student DB progress.
         """
@@ -47,6 +48,7 @@ class DiagnosticAndDiagnosisAgent:
             "3. Questions should expose conceptual misunderstandings.\n"
             "4. Include 4 multiple-choice options, correct answer, and explanation.\n\n"
         )
+        system_prompt += build_language_prompt(output_language)
         
         if is_rag_relevant:
             system_prompt += "RAG RULE: Ground questions in the provided syllabus context.\n\n"
@@ -213,7 +215,11 @@ class DiagnosticAndDiagnosisAgent:
         return {"status": "DIAGNOSED", "questions": questions, "diagnosis": diagnosis, "thinking_process": diagnosis.thinking_process}
 
     def generate_diagnostic(self, topic: str, source_context: str = "", allowed_subconcepts: list = None, **kwargs):
-        return self.generate_questions(topic=topic, syllabus_context=source_context)
+        return self.generate_questions(
+            topic=topic,
+            syllabus_context=source_context,
+            output_language=kwargs.get("output_language", "auto"),
+        )
 
 
 DiagnosticAgent = DiagnosticAndDiagnosisAgent

@@ -11,6 +11,7 @@ from backend.memory.revision_memory import RevisionMemory
 from backend.memory.schedule_memory import ScheduleMemory
 from backend.memory.syllabus_memory import SyllabusMemory
 from backend.memory.test_memory import TestMemory
+from backend.memory.notes_memory import NotesMemory
 
 
 current_account = ContextVar("edunexus_current_account", default=None)
@@ -59,6 +60,9 @@ class UserServices:
 
     @property
     def progress_memory(self): return self._get("progress", lambda: ProgressMemory(self.db_path))
+
+    @property
+    def notes_memory(self): return self._get("notes", lambda: NotesMemory(self.db_path))
 
 
 _services = {}

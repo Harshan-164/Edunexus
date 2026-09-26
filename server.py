@@ -22,6 +22,7 @@ from backend.memory.revision_memory import RevisionMemory
 from backend.memory.test_memory import TestMemory
 from backend.memory.schedule_memory import ScheduleMemory
 from backend.memory.progress_memory import ProgressMemory
+from backend.memory.notes_memory import NotesMemory
 from backend.auth.store import AuthStore
 from backend.auth.user_services import ServiceProxy, current_account, current_account_id, current_services, services_for
 from backend.admin.analytics import build_admin_overview, build_student_snapshot
@@ -154,6 +155,7 @@ test_agent = TestAgent(llm)
 test_memory = ServiceProxy("test_memory")
 schedule_memory = ServiceProxy("schedule_memory")
 progress_memory = ServiceProxy("progress_memory")
+notes_memory = ServiceProxy("notes_memory")
 workflow = create_workflow(llm, learner_memory)
 
 # UPLOAD DIR & STATIC DIR
@@ -246,6 +248,20 @@ class LearnChatRequest(BaseModel):
     session_id: Optional[str] = None
     response_mode: str = "text"
     preferences: Optional[LearnPreferences] = None
+
+
+class CreateNoteRequest(BaseModel):
+    title: Optional[str] = ""
+    content: Optional[str] = ""
+    color: Optional[str] = "yellow"
+    image_data: Optional[str] = ""
+
+
+class UpdateNoteRequest(BaseModel):
+    title: Optional[str] = None
+    content: Optional[str] = None
+    color: Optional[str] = None
+    image_data: Optional[str] = None
 
 
 class CreateChatSessionRequest(BaseModel):
@@ -502,6 +518,45 @@ def get_learner_rewards(student_id: str):
     aid = current_account_id()
     account = auth_store.get_account(aid)
     return compute_student_rewards(aid, current_services(), account)
+
+@app.get("/api/learner/{student_id}/notes")
+def get_student_notes(student_id: str):
+    aid = current_account_id()
+    return {"notes": notes_memory.list_notes(aid)}
+
+@app.post("/api/learner/{student_id}/notes", status_code=status.HTTP_201_CREATED)
+def create_student_note(student_id: str, req: CreateNoteRequest):
+    aid = current_account_id()
+    return notes_memory.create_note(
+        student_id=aid,
+        title=req.title or "",
+        content=req.content or "",
+        color=req.color or "yellow",
+        image_data=req.image_data or "",
+    )
+
+@app.put("/api/learner/{student_id}/notes/{note_id}")
+def update_student_note(student_id: str, note_id: str, req: UpdateNoteRequest):
+    aid = current_account_id()
+    note = notes_memory.update_note(
+        note_id=note_id,
+        student_id=aid,
+        title=req.title,
+        content=req.content,
+        color=req.color,
+        image_data=req.image_data,
+    )
+    if not note:
+        raise HTTPException(status_code=404, detail="Sticky note not found.")
+    return note
+
+@app.delete("/api/learner/{student_id}/notes/{note_id}")
+def delete_student_note(student_id: str, note_id: str):
+    aid = current_account_id()
+    success = notes_memory.delete_note(note_id, aid)
+    if not success:
+        raise HTTPException(status_code=404, detail="Sticky note not found.")
+    return {"status": "success", "deleted": note_id}
 
 @app.get("/api/learn/sessions/{student_id}")
 def list_chat_sessions(student_id: str):

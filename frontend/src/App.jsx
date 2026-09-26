@@ -165,7 +165,7 @@ export default function App() {
     <div className="app-shell">
       <Navbar currentMode={currentMode} setMode={setMode} learnerSummary={learnerSummary} studentProfile={studentProfile} username={account.username} onOpenProfile={openProfileModal} onLogout={handleLogout} />
       <main className="app-main"><div className="page-transition" key={currentMode}>
-        {currentMode === 'home' && <Home setMode={setMode} studentProfile={studentProfile} learnerSummary={learnerSummary} onOpenProfile={openProfileModal} onSaveProfile={handleSaveStudentProfile} />}
+        {currentMode === 'home' && <Home setMode={setMode} studentId={studentId} studentProfile={studentProfile} learnerSummary={learnerSummary} onOpenProfile={openProfileModal} onSaveProfile={handleSaveStudentProfile} />}
         {currentMode === 'learn' && <Learn studentId={studentId} onRefreshProfile={fetchLearnerSummary} />}
         {currentMode === 'revise' && <Revise studentId={studentId} studentProfile={studentProfile} onRefreshProfile={fetchLearnerSummary} />}
         {currentMode === 'test' && <Test studentId={studentId} studentProfile={studentProfile} onRefreshProfile={fetchLearnerSummary} />}

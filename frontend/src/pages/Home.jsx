@@ -21,6 +21,7 @@ import {
   Trophy,
   Zap
 } from 'lucide-react';
+import StickyNotesWidget from '../components/StickyNotesWidget';
 
 const MODES = [
   {
@@ -65,7 +66,7 @@ const MOTIVATIONAL_QUOTES = [
   { text: "Believe in the process. The real breakthrough happens right after the struggle.", author: "Neuroscience of Learning" },
 ];
 
-export default function Home({ setMode, studentProfile, learnerSummary, onOpenProfile, onSaveProfile }) {
+export default function Home({ setMode, studentId, studentProfile, learnerSummary, onOpenProfile, onSaveProfile }) {
   const streaks = learnerSummary?.streaks || {
     current_streak: 0,
     best_streak: 0,
@@ -522,7 +523,10 @@ export default function Home({ setMode, studentProfile, learnerSummary, onOpenPr
         </div>
       </section>
 
-      {/* 3. THREE FOCUSED MODES (Kept unchanged) */}
+      {/* 3. PERSONAL STICKY NOTES WIDGET */}
+      <StickyNotesWidget studentId={studentId} />
+
+      {/* 4. THREE FOCUSED MODES */}
       <section className="mode-section" aria-labelledby="mode-heading">
         <div className="section-heading">
           <div>
